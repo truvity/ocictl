@@ -1,13 +1,27 @@
 # ocictl
 
+[![CI](https://github.com/truvity/ocictl/actions/workflows/ci.yaml/badge.svg)](https://github.com/truvity/ocictl/actions/workflows/ci.yaml)
+[![Release](https://github.com/truvity/ocictl/actions/workflows/release.yaml/badge.svg)](https://github.com/truvity/ocictl/actions/workflows/release.yaml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/truvity/ocictl.svg)](https://pkg.go.dev/github.com/truvity/ocictl)
+[![Go Report Card](https://goreportcard.com/badge/github.com/truvity/ocictl)](https://goreportcard.com/report/github.com/truvity/ocictl)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Deterministic OCI chart packaging and CRD repack tooling.
 
 ## Tools
 
-| Binary | Purpose |
-|--------|---------|
+| Binary      | Purpose                                                    |
+| ----------- | ---------------------------------------------------------- |
 | **helmctl** | Deterministic Helm chart packaging + OCI push (GHCR + ECR) |
-| **crdctl** | Fetch upstream CRDs → generate chart → package → push |
+| **crdctl**  | Fetch upstream CRDs → generate chart → package → push      |
+
+## Packages
+
+| Package                                                                   | Description                                                      |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [`pkg/ocipush`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/ocipush) | Deterministic OCI artifact push via ORAS (GHCR + ECR auth)       |
+| [`pkg/helmctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/helmctl) | Helm chart packaging with version injection + deterministic push |
+| [`pkg/crdctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/crdctl)   | CRD fetch from GitHub + chart generation + publish pipeline      |
 
 ## Install
 
@@ -51,11 +65,11 @@ crdctl publish --config charts/cilium-crds/crdctl.yaml \
 
 ## CRD Charts
 
-| Chart | Upstream |
-|-------|----------|
-| cilium-crds | cilium/cilium |
-| barman-cloud-crds | cloudnative-pg/plugin-barman-cloud |
-| volume-snapshot-crds | kubernetes-csi/external-snapshotter |
+| Chart                | Upstream                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| cilium-crds          | [cilium/cilium](https://github.com/cilium/cilium)                                             |
+| barman-cloud-crds    | [cloudnative-pg/plugin-barman-cloud](https://github.com/cloudnative-pg/plugin-barman-cloud)   |
+| volume-snapshot-crds | [kubernetes-csi/external-snapshotter](https://github.com/kubernetes-csi/external-snapshotter) |
 
 Versions are pinned in each chart's `crdctl.yaml`. Published to `ghcr.io/truvity/charts/{name}:{version}`.
 
