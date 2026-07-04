@@ -4,7 +4,7 @@
 [![Release](https://github.com/truvity/ocictl/actions/workflows/release.yaml/badge.svg)](https://github.com/truvity/ocictl/actions/workflows/release.yaml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/truvity/ocictl.svg)](https://pkg.go.dev/github.com/truvity/ocictl)
 [![Go Report Card](https://goreportcard.com/badge/github.com/truvity/ocictl)](https://goreportcard.com/report/github.com/truvity/ocictl)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Deterministic OCI chart packaging and CRD repack tooling.
 
@@ -101,4 +101,4 @@ Both tools guarantee reproducible OCI manifests:
 
 ## License
 
-Apache-2.0
+MIT
