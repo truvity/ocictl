@@ -1,0 +1,6 @@
+# CRD chart configuration for Volume Snapshot (CSI external-snapshotter).
+# Version MUST match the external-snapshotter release deployed on children.
+repo: kubernetes-csi/external-snapshotter
+pinned_version: "8.6.0"
+paths:
+  - client/config/crd

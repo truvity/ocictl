@@ -1,0 +1,30 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - gocritic
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters-settings:
+  lll:
+    line-length: 160
+  gocritic:
+    enabled-checks:
+      - rangeValCopy
+      - exitAfterDefer
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

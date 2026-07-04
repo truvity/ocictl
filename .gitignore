@@ -1,0 +1,24 @@
+# Binaries
+dist/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Devbox
+.devbox/
+
+# Coverage
+coverage.out
+
+# Go
+vendor/
+
+# CRD cache
+.cache/
+
+# Generated chart templates (fetched by crdctl)
+charts/*/templates/

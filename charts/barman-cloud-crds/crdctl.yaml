@@ -1,0 +1,6 @@
+# CRD chart configuration for Barman Cloud (CNPG backup/restore plugin).
+# Version MUST match the barman-cloud-plugin release used by CNPG.
+repo: cloudnative-pg/plugin-barman-cloud
+pinned_version: "0.13.0"
+paths:
+  - config/crd/bases
