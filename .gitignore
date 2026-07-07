@@ -1,5 +1,7 @@
 # Binaries
 dist/
+# test fixtures are named dist/ too — never ignore testdata
+!**/testdata/**
 
 # IDE
 .idea/

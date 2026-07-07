@@ -1,0 +1,28 @@
+[
+  {"name": "url-shortener-redirect", "path": "dist/x", "type": "Binary", "extra": {}},
+  {"name": "metadata.json", "type": "Metadata"},
+  {
+    "name": "registry.example.com/url-shortener/web:1.6.1",
+    "path": "registry.example.com/url-shortener/web:1.6.1",
+    "type": "Docker Image",
+    "extra": {"Digest": "sha256:web111", "ID": "url-shortener-web"}
+  },
+  {
+    "name": "registry.example.com/url-shortener/web:latest",
+    "path": "registry.example.com/url-shortener/web:latest",
+    "type": "Docker Image",
+    "extra": {"Digest": "sha256:web111", "ID": "url-shortener-web"}
+  },
+  {
+    "name": "registry.example.com/url-shortener/redirect@sha256:red222",
+    "path": "registry.example.com/url-shortener/redirect@sha256:red222",
+    "type": "Docker Manifest",
+    "extra": {"Digest": "sha256:red222"}
+  },
+  {
+    "name": "registry.example.com/url-shortener/migrate@sha256:mig333",
+    "path": "registry.example.com/url-shortener/migrate@sha256:mig333",
+    "type": "Docker Manifest",
+    "extra": {"Digest": "sha256:mig333"}
+  }
+]
