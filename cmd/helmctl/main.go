@@ -2,8 +2,11 @@
 //
 // Usage:
 //
-//	helmctl package --chart <dir> --version <ver> --output <dir>
+//	helmctl goreleaser-manifest --goreleaser-dist <dir> [--images a,b] [-o <file>]
+//	helmctl package --chart <dir> (--version <ver> | --manifest <file>) [--require-image-digests] --output <dir>
 //	helmctl push --tgz <file> --registry <url> --repository <path> [--profile <aws>] --version <ver> --name <name>
+//
+// See docs/goreleaser.md for the GoReleaser → immutable-chart pipeline.
 package main
 
 import (
@@ -16,6 +19,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/helmctl"
 )
 
@@ -32,19 +36,87 @@ func main() {
 		Version: Version,
 		Commands: []*cli.Command{
 			{
+				Name: "goreleaser-manifest",
+				Usage: "Convert a GoReleaser dist/ directory into a release manifest " +
+					"(version + digest-pinned image values) for `package --manifest`",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "goreleaser-dist",
+						Usage:    "Path to the GoReleaser dist directory (artifacts.json + metadata.json)",
+						Required: true,
+					},
+					&cli.StringSliceFlag{
+						Name:  "images",
+						Usage: "Only include these image component keys (default: all images in the dist)",
+					},
+					&cli.StringFlag{
+						Name:    "output",
+						Aliases: []string{"o"},
+						Usage:   "Manifest output file (\"-\" = stdout)",
+						Value:   "-",
+					},
+				},
+				Action: func(_ context.Context, cmd *cli.Command) error {
+					dist, err := goreleaserdist.Load(cmd.String("goreleaser-dist"))
+					if err != nil {
+						return err
+					}
+
+					manifest, err := dist.Manifest(goreleaserdist.ManifestOptions{
+						Images: cmd.StringSlice("images"),
+					})
+					if err != nil {
+						return err
+					}
+
+					return manifest.Write(cmd.String("output"))
+				},
+			},
+			{
 				Name:  "package",
-				Usage: "Package a chart with version injection (source is never modified)",
+				Usage: "Package a chart with version + values injection (source is never modified)",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "chart", Usage: "Path to chart directory", Required: true},
-					&cli.StringFlag{Name: "version", Usage: "Version to inject", Required: true},
+					&cli.StringFlag{Name: "version", Usage: "Version to inject (or use --manifest)"},
+					&cli.StringFlag{Name: "app-version", Usage: "appVersion to inject (default: version)"},
+					&cli.StringFlag{
+						Name:  "manifest",
+						Usage: "Release manifest: version/appVersion + values to bake in (see `goreleaser-manifest`)",
+					},
+					&cli.BoolFlag{Name: "require-image-digests", Usage: "Fail unless every values.yaml images.* entry has a digest"},
 					&cli.StringFlag{Name: "output", Usage: "Output directory for .tgz", Value: "."},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					result, err := helmctl.Package(ctx, logger, helmctl.PackageConfig{
-						ChartDir:  cmd.String("chart"),
-						Version:   cmd.String("version"),
-						OutputDir: cmd.String("output"),
-					})
+					cfg := helmctl.PackageConfig{
+						ChartDir:            cmd.String("chart"),
+						Version:             cmd.String("version"),
+						AppVersion:          cmd.String("app-version"),
+						RequireImageDigests: cmd.Bool("require-image-digests"),
+						OutputDir:           cmd.String("output"),
+					}
+
+					if manifestPath := cmd.String("manifest"); manifestPath != "" {
+						manifest, err := helmctl.LoadManifest(manifestPath)
+						if err != nil {
+							return err
+						}
+
+						cfg.ValuesOverlay = manifest.Values
+
+						if cfg.Version == "" {
+							cfg.Version = manifest.Version
+						}
+
+						if cfg.AppVersion == "" {
+							cfg.AppVersion = manifest.AppVersion
+						}
+					}
+
+					if cfg.Version == "" {
+						return fmt.Errorf("either --version or --manifest is required")
+					}
+
+					result, err := helmctl.Package(ctx, logger, cfg)
 					if err != nil {
 						return err
 					}

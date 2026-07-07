@@ -17,11 +17,12 @@ Deterministic OCI chart packaging and CRD repack tooling.
 
 ## Packages
 
-| Package                                                                   | Description                                                      |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| [`pkg/ocipush`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/ocipush) | Deterministic OCI artifact push via ORAS (GHCR + ECR auth)       |
-| [`pkg/helmctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/helmctl) | Helm chart packaging with version injection + deterministic push |
-| [`pkg/crdctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/crdctl)   | CRD fetch from GitHub + chart generation + publish pipeline      |
+| Package                                                                                   | Description                                                       |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| [`pkg/ocipush`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/ocipush)                 | Deterministic OCI artifact push via ORAS (GHCR + ECR auth)        |
+| [`pkg/helmctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/helmctl)                 | Helm chart packaging: version + values injection, release manifests, deterministic push |
+| [`pkg/goreleaserdist`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/goreleaserdist)   | Parse a GoReleaser `dist/` (images + index digests + version) into a release manifest |
+| [`pkg/crdctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/crdctl)                   | CRD fetch from GitHub + chart generation + publish pipeline       |
 
 ## Install
 
@@ -32,6 +33,20 @@ go run github.com/truvity/ocictl/cmd/crdctl@latest --help
 ```
 
 ## Usage
+
+### helmctl + GoReleaser: deterministic immutable charts
+
+Turn any GoReleaser build (ko and/or `dockers_v2` images) into a chart whose
+`values.yaml` carries digest-pinned image references and whose version comes
+from the release — see **[docs/goreleaser.md](docs/goreleaser.md)** for the
+full guide (manifest schema, chart-side conventions, multi-arch digests):
+
+```bash
+goreleaser release --clean
+helmctl goreleaser-manifest --goreleaser-dist dist/myproject -o dist/myproject/chart-manifest.yaml
+helmctl package --chart charts/myproject --manifest dist/myproject/chart-manifest.yaml \
+  --require-image-digests --output dist/myproject/charts/
+```
 
 ### helmctl
 

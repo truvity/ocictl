@@ -22,8 +22,16 @@ type (
 	PackageConfig struct {
 		// ChartDir is the source chart directory (never modified).
 		ChartDir string
-		// Version to inject into Chart.yaml (version + appVersion).
+		// Version to inject into Chart.yaml.
 		Version string
+		// AppVersion to inject into Chart.yaml; defaults to Version.
+		AppVersion string
+		// ValuesOverlay is deep-merged into the chart's values.yaml
+		// (typically `images.*` blocks from a release manifest).
+		ValuesOverlay map[string]any
+		// RequireImageDigests fails packaging unless every entry under
+		// the final values.yaml `images:` map carries a digest.
+		RequireImageDigests bool
 		// OutputDir is where the .tgz is written.
 		OutputDir string
 	}
@@ -39,8 +47,9 @@ type (
 	}
 )
 
-// Package copies a chart to a temp dir, injects version/appVersion,
-// and runs `helm package`. The source chart directory is NEVER modified.
+// Package copies a chart to a temp dir, injects version/appVersion and the
+// values overlay, and runs `helm package`. The source chart directory is
+// NEVER modified.
 func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*PackageResult, error) {
 	tmpDir, err := os.MkdirTemp("", "helmctl-*")
 	if err != nil {
@@ -55,8 +64,23 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 		return nil, fmt.Errorf("copy chart: %w", err)
 	}
 
-	if err := InjectChartYAML(chartTmp, cfg.Version); err != nil {
+	appVersion := cfg.AppVersion
+	if appVersion == "" {
+		appVersion = cfg.Version
+	}
+
+	if err := InjectChartMeta(chartTmp, cfg.Version, appVersion); err != nil {
 		return nil, fmt.Errorf("inject Chart.yaml: %w", err)
+	}
+
+	if err := InjectValues(chartTmp, cfg.ValuesOverlay); err != nil {
+		return nil, fmt.Errorf("inject values.yaml: %w", err)
+	}
+
+	if cfg.RequireImageDigests {
+		if err := RequireImageDigests(chartTmp); err != nil {
+			return nil, err
+		}
 	}
 
 	logger.InfoContext(ctx, "packaging chart",
@@ -80,9 +104,15 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 	}, nil
 }
 
-// InjectChartYAML patches version and appVersion in Chart.yaml.
-// Operates on a temp copy (never the source tree).
+// InjectChartYAML patches version and appVersion (both set to version) in
+// Chart.yaml. Kept for compatibility; see InjectChartMeta.
 func InjectChartYAML(chartDir, version string) error {
+	return InjectChartMeta(chartDir, version, version)
+}
+
+// InjectChartMeta patches version and appVersion in Chart.yaml.
+// Operates on a temp copy (never the source tree).
+func InjectChartMeta(chartDir, version, appVersion string) error {
 	chartPath := filepath.Join(chartDir, "Chart.yaml")
 
 	data, err := os.ReadFile(chartPath)
@@ -105,7 +135,7 @@ func InjectChartYAML(chartDir, version string) error {
 	}
 
 	setYAMLField(mapping, "version", version)
-	setYAMLField(mapping, "appVersion", version)
+	setYAMLField(mapping, "appVersion", appVersion)
 
 	out, err := yaml.Marshal(&doc)
 	if err != nil {
