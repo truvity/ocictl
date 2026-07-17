@@ -1,7 +1,7 @@
 # CRD chart configuration for Cilium.
 # Version MUST match the cilium controller chart version.
 repo: cilium/cilium
-pinned_version: "1.19.5"
+pinned_version: "1.19.6"
 paths:
   - pkg/k8s/apis/cilium.io/client/crds/v2
   - pkg/k8s/apis/cilium.io/client/crds/v2alpha1
