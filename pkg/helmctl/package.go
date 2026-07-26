@@ -32,6 +32,18 @@ type (
 		// RequireImageDigests fails packaging unless every entry under
 		// the final values.yaml `images:` map carries a digest.
 		RequireImageDigests bool
+		// VendorDependencies resolves the chart's Chart.yaml dependencies
+		// before packaging (`helm package` never resolves them itself).
+		// `helm dependency update` runs against the SOURCE chart dir —
+		// file:// repositories resolve relative to the chart directory,
+		// so repo-internal deps only resolve from the chart's real
+		// location; the resulting charts/*.tgz and Chart.lock are build
+		// artifacts the owning repo should gitignore. In the packaged
+		// copy Chart.lock's generated timestamp is pinned so the parent
+		// chart's OCI digest stays content-derived (helm re-serializes
+		// dependency tarballs as expanded file trees, so they carry no
+		// wall-clock state). No-op for charts without dependencies.
+		VendorDependencies bool
 		// OutputDir is where the .tgz is written.
 		OutputDir string
 	}
@@ -49,8 +61,22 @@ type (
 
 // Package copies a chart to a temp dir, injects version/appVersion and the
 // values overlay, and runs `helm package`. The source chart directory is
-// NEVER modified.
+// NEVER modified — except when VendorDependencies is set, which drops
+// gitignorable dependency artifacts there (see the field doc).
 func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*PackageResult, error) {
+	if cfg.VendorDependencies {
+		declares, err := hasDependencies(cfg.ChartDir)
+		if err != nil {
+			return nil, err
+		}
+
+		if declares {
+			if err := vendorDependencies(ctx, logger, cfg.ChartDir); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	tmpDir, err := os.MkdirTemp("", "helmctl-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
@@ -62,6 +88,12 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 
 	if err := copyDir(cfg.ChartDir, chartTmp); err != nil {
 		return nil, fmt.Errorf("copy chart: %w", err)
+	}
+
+	if cfg.VendorDependencies {
+		if err := pinChartLock(chartTmp); err != nil {
+			return nil, err
+		}
 	}
 
 	appVersion := cfg.AppVersion
