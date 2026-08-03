@@ -65,14 +65,18 @@ Design rules:
 
 ## Commands
 
+A third standalone binary, following this repository's one-binary-per-tool
+convention (`cmd/crdctl`, `cmd/helmctl` → `cmd/fleetctl`); consumers run it
+the same way (`go run github.com/truvity/ocictl/cmd/fleetctl@vX`).
+
 ```
-ocictl fleet build  [-p project]              # images (buildx, git-sha tags) + chart packages
-ocictl fleet push   [-p project]              # to registries.images / registries.charts
-ocictl fleet deploy [-p project] -c cluster   # helm upgrade --install, cluster values merged
-ocictl fleet test   [-p project]              # ephemeral namespace → deploy → run test.command → teardown
+fleetctl build  [-p project]              # images (buildx, git-sha tags) + chart packages
+fleetctl push   [-p project]              # to registries.images / registries.charts
+fleetctl deploy [-p project] -c cluster   # helm upgrade --install, cluster values merged
+fleetctl test   [-p project]              # ephemeral namespace → deploy → run test.command → teardown
 ```
 
-`fleet test` is the flagship: bring a kubeconfig and a chart, get
+`fleetctl test` is the flagship: bring a kubeconfig and a chart, get
 integration tests against a real cluster — create `{namespacePrefix}{git-sha}`,
 deploy the project's charts, wait ready, run the command with
 `FLEET_NAMESPACE`/`FLEET_CLUSTER` exported, tear down on exit (keep on
@@ -94,7 +98,7 @@ carries no organization-specific behavior, so there is no reason for churn.
 
 ## Rollout
 
-1. Schema v0 + `fleet build|push|test` extracted from the incumbent
+1. Schema v0 + `fleetctl build|push|test` extracted from the incumbent
    private implementation, generalized (the org-specific conveniences stay
    behind in the consumer repo).
 2. **Pilot on exactly one downstream project** (smallest real service).
