@@ -31,6 +31,20 @@ builds:
     ldflags:
       - -s -w -X main.Version={{.Version}}
 
+  - id: fleetctl
+    main: ./cmd/fleetctl
+    binary: fleetctl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
 archives:
   - id: helmctl
     ids:
@@ -43,6 +57,12 @@ archives:
       - crdctl
     formats: [tar.gz]
     name_template: "crdctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: fleetctl
+    ids:
+      - fleetctl
+    formats: [tar.gz]
+    name_template: "fleetctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 release:
   github:
