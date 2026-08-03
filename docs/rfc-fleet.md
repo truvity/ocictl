@@ -27,7 +27,7 @@ tool must not compete with any of them.
 | Building images | goreleaser / docker |
 | Packaging & pushing charts | helmctl |
 | Cluster registry ("which clusters exist, how to reach them") | kubeconfig |
-| Cluster facts ("what is true about this cluster") | the cluster itself (see below) |
+| Cluster facts ("what is true about this cluster") | `fleet.yaml`, committed (see below) |
 | Credentials: registry auth, AWS profiles, kubeconfig generation | ambient environment |
 | CD / promotion | a different tool |
 | Secrets | never |
@@ -53,16 +53,21 @@ convention (`cmd/crdctl`, `cmd/helmctl` → `cmd/fleetctl`); consumers run
 it the same way (`go run github.com/truvity/ocictl/cmd/fleetctl@vX`).
 
 ```
-fleetctl deploy -c <kubecontext> --chart <ref|path> [release]
-    # helm upgrade --install into the resolved namespace,
-    # with the cluster's fleet-values merged as .Values.fleet
+fleetctl deploy -c <kubecontext> --chart <ref|path> [--build] [release]
+    # helm upgrade --install into the resolved namespace, with the
+    # cluster's values from fleet.yaml merged as .Values.fleet;
+    # --chart takes a LOCAL PATH or an OCI ref — the local-chart dev
+    # loop is first-class
 
-fleetctl test [-c <kubecontext>] [--prefix it-] [--keep] -- <command...>
+fleetctl test [-c <kubecontext>] [--prefix it-] [--keep] [--build] -- <command...>
     # ephemeral namespace → run command → teardown
 
 fleetctl whoami [-c <kubecontext>]
     # debug: the cluster's view of the caller + the resolved namespace
 ```
+
+`--build` runs the repo's configured build hook first (see Build
+integration) — the one-command dev loop without absorbing the build.
 
 `-c` takes a **kubecontext name directly** (e.g. `devel@oidc`) — there is
 no cluster-name indirection, because kubeconfig is the cluster registry.
@@ -96,17 +101,55 @@ spawns, so there is never a which-kubeconfig split-brain):
 - `FLEET_KUBECONTEXT` — default for `-c`
 - `FLEET_KUBECONFIG` — overrides the ambient `KUBECONFIG`
 
-## Cluster facts: the `fleet-values` ConfigMap
+## The config file: a small, committed `fleet.yaml`
 
-A cluster is the authority on itself. The infrastructure pipeline stamps
-a ConfigMap (default `kube-public/fleet-values`) into every cluster,
-holding an **opaque** values map (account IDs, region, auth mode, IAM
-boundaries, …). `fleetctl deploy` reads it from the target cluster and
-merges it into the release as `.Values.fleet`, verbatim. The tool never
-interprets the contents — organization semantics live in the charts.
+One small file, committed in the consumer repository, refreshed
+out-of-band by whoever owns the infrastructure source of truth — the
+`aws.ini` trust model. (An in-cluster shared ConfigMap was considered
+and rejected 2026-08-03: a repo-local file is simpler to reason about,
+works offline, and the staleness class is already accepted for
+`aws.ini`/`kubeconfig`.)
 
-Properties: always fresh (no committed-file staleness), readable by
-anyone who can deploy, and fully generic for this tool.
+```yaml
+# fleet.yaml — committed; regenerate from your infra source of truth.
+personalNamespace: "emp-{slug}"
+groupPrefix: "emp:"
+
+clusters:
+  devel@oidc:              # keys ARE kubecontext names — no indirection,
+    values:                # kubeconfig remains the cluster registry
+      accountID: "..."
+      region: eu-central-1
+      authMode: pod-identity
+      permissionsBoundary: arn:aws:iam::...:policy/...
+
+hooks:
+  build: ["goreleaser", "release", "--snapshot", "--clean"]
+```
+
+`values` is **opaque**: merged into the release as `.Values.fleet`,
+verbatim; organization semantics live in the charts. The file holds
+nothing that mirrors kubeconfig (no endpoints, no auth) and nothing the
+build system owns (no task graph).
+
+## Build integration: assured, not absorbed
+
+The full path an engineer or CI needs is covered without this tool
+owning any build step:
+
+| Capability | Owner | fleetctl's part |
+|---|---|---|
+| Build + push docker images | goreleaser / docker | none — or via the build hook |
+| Build helm chart (push optional) | helmctl (this repository) | none |
+| Roll out a LOCAL chart | helm | `fleetctl deploy --chart ./path` |
+
+**The build hook** (`hooks.build` in `fleet.yaml`, an opaque argv) wires
+them together for the one-command loop: `fleetctl deploy --build` /
+`fleetctl test --build` executes the hook first, with the resolved
+`FLEET_*` env exported to it. Tag coordination is by convention — both
+the hook's build and the chart's values derive tags from the git sha —
+not by protocol. Without `--build` (the CI/moon path), the build system
+sequences goreleaser/helmctl itself and fleetctl only deploys/tests.
 
 ## Test harness: one core, two entry points
 
@@ -142,14 +185,12 @@ same zero-dependency rule as everything else.
 
 Both stdlib-only; kubectl in `PATH` is the single runtime requirement.
 
-## Configuration
+## Configuration precedence
 
-There is **no required config file**. The two organization knobs —
-personal-namespace template and identity group prefix — are flags with
-env fallbacks (`FLEET_PERSONAL_NAMESPACE`, `FLEET_GROUP_PREFIX`),
-typically set once in the build system's task definitions. An optional
-`fleet.yaml` may carry repo-level defaults for the same knobs; it holds
-nothing else.
+Flags → `FLEET_*` env (`FLEET_PERSONAL_NAMESPACE`, `FLEET_GROUP_PREFIX`,
+`FLEET_KUBECONTEXT`, `FLEET_KUBECONFIG`, `FLEET_NAMESPACE`) →
+`fleet.yaml`. The file is the committed shared default; env/flags are
+the per-invocation override, never the other way around.
 
 ## Out of scope — explicitly
 
@@ -163,9 +204,9 @@ nothing else.
    `fleetctl values` primitives piped into plain `helm upgrade` by the
    build system? (Current stance: composite — the values-merge deserves
    one tested implementation.)
-2. ConfigMap location/name (`kube-public/fleet-values`) and whether a
-   fallback flag (`--fleet-values file.yaml`) is worth having for
-   clusters outside the stamping pipeline.
+2. Build-hook shape: single `hooks.build` vs named hooks per command
+   (`hooks.deploy-build`, `hooks.test-build`) — pilot decides whether
+   one hook suffices.
 
 ## Stability contract
 
