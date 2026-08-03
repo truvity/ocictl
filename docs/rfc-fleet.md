@@ -82,6 +82,29 @@ deploy the project's charts, wait ready, run the command with
 `FLEET_NAMESPACE`/`FLEET_CLUSTER` exported, tear down on exit (keep on
 `--keep` for debugging).
 
+## Identity: who is deploying?
+
+Personal-namespace workflows (a developer deploying to their own
+namespace) need the caller's **slug** — a short identifier the
+organization's identity platform embeds in the OIDC token as a prefixed
+entry in the groups claim (the prefix is configuration, e.g. `emp:`).
+
+Resolution order:
+
+1. `--slug` flag
+2. `FLEET_SLUG` env var (the CI/bot path — same family as
+   `FLEET_NAMESPACE` / `FLEET_CLUSTER`)
+3. `kubectl auth whoami -o json` against the target cluster's
+   kubecontext — the cluster's own view of the caller; the exec
+   credential plugin (browser SSO, cache, refresh) is kubectl's job,
+   never this tool's. Exactly-one semantics on the prefixed group:
+   zero or multiple matches are hard errors, never guesses.
+
+Resolution is **lazy**: only commands that actually target a personal
+namespace resolve a slug. Machine identities (CI runners) never carry
+the prefixed group by construction, so a robot in a human code path
+fails crisply instead of impersonating anyone.
+
 ## Stability contract
 
 The schema stabilizes **once**: v0 during the pilot (breaking changes
