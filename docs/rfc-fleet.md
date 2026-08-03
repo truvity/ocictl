@@ -30,6 +30,8 @@ registries:
   images: 123456789.dkr.ecr.eu-central-1.amazonaws.com   # docker push/pull
   charts: oci://123456789.dkr.ecr.eu-central-1.amazonaws.com/charts
 
+personalNamespace: "emp-{slug}"  # template for the default personal namespace
+
 clusters:
   devel:
     kubecontext: devel@oidc      # resolved against the ambient kubeconfig
@@ -82,28 +84,38 @@ deploy the project's charts, wait ready, run the command with
 `FLEET_NAMESPACE`/`FLEET_CLUSTER` exported, tear down on exit (keep on
 `--keep` for debugging).
 
-## Identity: who is deploying?
+## Identity and namespace resolution
 
-Personal-namespace workflows (a developer deploying to their own
-namespace) need the caller's **slug** — a short identifier the
-organization's identity platform embeds in the OIDC token as a prefixed
-entry in the groups claim (the prefix is configuration, e.g. `emp:`).
+Commands that target a namespace resolve it in this order:
 
-Resolution order:
+1. `--namespace` flag
+2. **`FLEET_NAMESPACE`** env var — the CI/bot path: robots name a
+   namespace outright and no identity machinery runs. The variable is
+   deliberately bidirectional: read as an override when the caller set
+   it, and always re-exported with the RESOLVED value into child
+   processes (test commands), the same pattern as `KUBECONFIG`.
+3. Derived personal namespace: `kubectl auth whoami -o json` against
+   the target cluster's kubecontext returns the cluster's own view of
+   the caller; the organization's identity platform embeds a short
+   identifier as a prefixed entry in the groups claim (prefix is
+   configuration, e.g. `emp:`), and the `personalNamespace` template
+   renders it (`emp-{slug}`). The exec credential plugin (browser SSO,
+   cache, refresh) is kubectl's job, never this tool's. Exactly-one
+   semantics on the prefixed group: zero or multiple matches are hard
+   errors, never guesses.
 
-1. `--slug` flag
-2. `FLEET_SLUG` env var (the CI/bot path — same family as
-   `FLEET_NAMESPACE` / `FLEET_CLUSTER`)
-3. `kubectl auth whoami -o json` against the target cluster's
-   kubecontext — the cluster's own view of the caller; the exec
-   credential plugin (browser SSO, cache, refresh) is kubectl's job,
-   never this tool's. Exactly-one semantics on the prefixed group:
-   zero or multiple matches are hard errors, never guesses.
+Tuning the `auth whoami` path (and every other kubectl this tool
+spawns, for consistency):
 
-Resolution is **lazy**: only commands that actually target a personal
-namespace resolve a slug. Machine identities (CI runners) never carry
-the prefixed group by construction, so a robot in a human code path
-fails crisply instead of impersonating anyone.
+- `FLEET_KUBECONTEXT` — overrides the cluster's `kubecontext` from
+  `fleet.yaml`
+- `FLEET_KUBECONFIG` — overrides the ambient `KUBECONFIG`
+
+Resolution is **lazy**: only commands that actually need a namespace
+and were given none resolve identity. Machine identities (CI runners)
+never carry the prefixed group by construction, so a robot falling
+into the human code path fails crisply instead of impersonating
+anyone — `FLEET_NAMESPACE` is the deliberate robot path.
 
 ## Stability contract
 
