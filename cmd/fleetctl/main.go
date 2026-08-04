@@ -5,13 +5,15 @@
 // Usage:
 //
 //	fleetctl deploy -c <kubecontext> --chart <ref|path> [--build] [release]
-//	fleetctl test  [-c <kubecontext>] [--prefix it-] [--keep] [--build] -- <command...>
+//	fleetctl test  [-c <kubecontext>] [--ephemeral] [--keep] [--build] -- <command...>
 //	fleetctl whoami [-c <kubecontext>]
 //
-// Namespace resolution: --namespace → FLEET_NAMESPACE → derived from the
-// cluster's view of the caller (kubectl auth whoami → prefixed identity
-// group → personal-namespace template). kubectl is the abstraction:
-// no kubeconfig parsing, no client-go.
+// Tenant resolution (one path, shared by all three — see
+// pkg/fleettest.Resolve): namespace is --namespace → FLEET_NAMESPACE →
+// derived from the cluster's view of the caller (kubectl auth whoami →
+// prefixed identity group → personal-namespace template); release is
+// --release → FLEET_RELEASE → the CI run → --app. kubectl is the
+// abstraction: no kubeconfig parsing, no client-go.
 package main
 
 import (
@@ -68,6 +70,22 @@ func commonFlags() []cli.Flag {
 			Sources: cli.EnvVars("FLEET_NAMESPACE"),
 		},
 		&cli.StringFlag{
+			Name:    "release",
+			Aliases: []string{"r"},
+			Usage:   "release name — the other half of the tenant identity",
+			Sources: cli.EnvVars("FLEET_RELEASE"),
+		},
+		&cli.StringFlag{
+			Name:    "app",
+			Usage:   "application name: the release of a standing employee install",
+			Sources: cli.EnvVars("FLEET_APP"),
+		},
+		&cli.StringFlag{
+			Name:    "project",
+			Usage:   "project name for per-project fleet.yaml hooks (default: --app)",
+			Sources: cli.EnvVars("FLEET_PROJECT"),
+		},
+		&cli.StringFlag{
 			Name:    "config",
 			Usage:   "fleet.yaml path (optional file)",
 			Value:   fleetcfg.DefaultPath,
@@ -102,7 +120,7 @@ func app() *cli.Command {
 func deployCommand() *cli.Command {
 	return &cli.Command{
 		Name: "deploy",
-		Usage: "helm upgrade --install into the resolved namespace, " +
+		Usage: "helm upgrade --install into the resolved tenant, " +
 			"with the cluster's fleet values merged as .Values.fleet",
 		ArgsUsage: "[release]",
 		Flags: append(commonFlags(),
@@ -117,31 +135,36 @@ func deployCommand() *cli.Command {
 				return err
 			}
 
-			namespace, err := resolveNamespace(ctx, cmd, cfg)
+			opts := tenantOptions(cmd, cfg)
+			if release := cmd.Args().First(); release != "" {
+				opts.Release = release // the positional argument wins
+			}
+
+			// The same resolution the test harness uses — deploy and test
+			// cannot disagree about which tenant they mean.
+			tenant, err := fleettest.Resolve(ctx, opts)
 			if err != nil {
 				return err
 			}
 
 			if cmd.Bool("build") {
-				if err := runBuildHook(ctx, cfg, namespace, cmd.String("kubecontext")); err != nil {
+				if err := runBuildHook(ctx, cfg, projectName(cmd), tenant, opts.Kubecontext); err != nil {
 					return err
 				}
 			}
 
-			release := cmd.Args().First()
-			if release == "" {
-				release = namespace // sane dev-loop default: one release per namespace
+			args := []string{
+				"upgrade", "--install", tenant.Release, cmd.String("chart"),
+				"--namespace", tenant.Namespace,
 			}
-
-			args := []string{"upgrade", "--install", release, cmd.String("chart"), "--namespace", namespace}
-			if kctx := cmd.String("kubecontext"); kctx != "" {
-				args = append(args, "--kube-context", kctx)
+			if opts.Kubecontext != "" {
+				args = append(args, "--kube-context", opts.Kubecontext)
 			}
 
 			// The cluster's opaque values ride as .Values.fleet — written
 			// to a temp file so helm's own precedence rules stay intact
 			// (later -f/--set flags win over it).
-			if cluster, ok := cfg.Clusters[cmd.String("kubecontext")]; ok && len(cluster.Values) > 0 {
+			if cluster, ok := cfg.Clusters[opts.Kubecontext]; ok && len(cluster.Values) > 0 {
 				tmp, tmpErr := writeFleetValues(cluster.Values)
 				if tmpErr != nil {
 					return tmpErr
@@ -159,19 +182,24 @@ func deployCommand() *cli.Command {
 				args = append(args, "--set", s)
 			}
 
-			return runPassthrough(ctx, cmd.String("kubeconfig"), namespace, cmd.String("kubecontext"), "helm", args...)
+			return runPassthrough(ctx, cmd.String("kubeconfig"), tenant, opts.Kubecontext, "helm", args...)
 		},
 	}
 }
 
 func testCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "test",
-		Usage:     "run a command inside an ephemeral namespace",
+		Name: "test",
+		Usage: "run a command inside the resolved tenant " +
+			"(standing by default; --ephemeral creates and deletes a namespace)",
 		ArgsUsage: "-- <command...>",
 		Flags: append(commonFlags(),
+			&cli.BoolFlag{
+				Name:  "ephemeral",
+				Usage: "create {prefix}{git-sha}, run, tear down (default: use the standing tenant, create nothing)",
+			},
 			&cli.StringFlag{Name: "prefix", Usage: "ephemeral namespace prefix", Value: "it-"},
-			&cli.BoolFlag{Name: "keep", Usage: "keep the namespace on exit (debugging)"},
+			&cli.BoolFlag{Name: "keep", Usage: "keep the ephemeral namespace on exit (debugging)"},
 			&cli.BoolFlag{Name: "build", Usage: "run the fleet.yaml build hook first"},
 		),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
@@ -185,21 +213,23 @@ func testCommand() *cli.Command {
 				return fmt.Errorf("no command: fleetctl test [flags] -- <command...>")
 			}
 
-			if cmd.Bool("build") {
-				if err := runBuildHook(ctx, cfg, "", cmd.String("kubecontext")); err != nil {
-					return err
-				}
-			}
+			opts := tenantOptions(cmd, cfg)
+			opts.Ephemeral = cmd.Bool("ephemeral")
+			opts.NamespacePrefix = cmd.String("prefix")
+			opts.Keep = cmd.Bool("keep")
 
-			runner, err := fleettest.New(ctx, fleettest.Options{
-				Kubecontext:     cmd.String("kubecontext"),
-				Kubeconfig:      cmd.String("kubeconfig"),
-				NamespacePrefix: cmd.String("prefix"),
-				Namespace:       cmd.String("namespace"), // FLEET_NAMESPACE override
-				Keep:            cmd.Bool("keep"),
-			})
+			runner, err := fleettest.New(ctx, opts)
 			if err != nil {
 				return err
+			}
+
+			// After New, so the hook sees the resolved tenant.
+			if cmd.Bool("build") {
+				if err := runBuildHook(ctx, cfg, projectName(cmd), runner.Tenant(), opts.Kubecontext); err != nil {
+					_ = runner.Close()
+
+					return err
+				}
 			}
 
 			code, execErr := runner.Exec(ctx, argv)
@@ -229,7 +259,7 @@ func testCommand() *cli.Command {
 func whoamiCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "whoami",
-		Usage: "the cluster's view of the caller + the resolved namespace",
+		Usage: "the cluster's view of the caller + the resolved tenant",
 		Flags: commonFlags(),
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			cfg, err := fleetcfg.Load(cmd.String("config"))
@@ -237,9 +267,11 @@ func whoamiCommand() *cli.Command {
 				return err
 			}
 
+			opts := tenantOptions(cmd, cfg)
+
 			user, err := kubewho.WhoAmI(ctx, kubewho.Options{
-				Kubecontext: cmd.String("kubecontext"),
-				Kubeconfig:  cmd.String("kubeconfig"),
+				Kubecontext: opts.Kubecontext,
+				Kubeconfig:  opts.Kubeconfig,
 			})
 			if err != nil {
 				return err
@@ -251,82 +283,95 @@ func whoamiCommand() *cli.Command {
 				fmt.Printf("group:     %s\n", g)
 			}
 
-			prefix := stringOr(cmd.String("group-prefix"), cfg.GroupPrefix, "emp:")
+			prefix := stringOr(opts.GroupPrefix, fleettest.DefaultGroupPrefix)
 
-			slug, slugErr := kubewho.GroupPrefixed(user, prefix)
-			if slugErr != nil {
+			if slug, slugErr := kubewho.GroupPrefixed(user, prefix); slugErr == nil {
+				fmt.Printf("identity:  %s\n", slug)
+			} else {
 				fmt.Printf("identity:  (none: %v)\n", slugErr)
+			}
+
+			// Reuse the identity already fetched: one kubectl call, and the
+			// tenant printed here is exactly what deploy/test would use.
+			opts.WhoAmI = func(context.Context, kubewho.Options) (kubewho.User, error) { return user, nil }
+
+			// The two halves print independently: a missing release must
+			// not hide the namespace, which is what whoami is usually for.
+			namespace, nsErr := fleettest.ResolveNamespace(ctx, opts)
+			if nsErr != nil {
+				fmt.Printf("namespace: (unresolved: %v)\n", nsErr)
+			} else {
+				fmt.Printf("namespace: %s\n", namespace)
+				opts.Namespace = namespace
+			}
+
+			tenant, err := fleettest.Resolve(ctx, opts)
+			if err != nil {
+				fmt.Printf("release:   (unresolved: %v)\n", err)
 
 				return nil
 			}
 
-			fmt.Printf("identity:  %s\n", slug)
-
-			if template := stringOr(cmd.String("personal-namespace"), cfg.PersonalNamespace, ""); template != "" {
-				if ns, nsErr := fleetcfg.RenderNamespace(template, slug); nsErr == nil {
-					fmt.Printf("namespace: %s\n", ns)
-				}
-			}
+			fmt.Printf("release:   %s\n", tenant.Release)
 
 			return nil
 		},
 	}
 }
 
-// resolveNamespace implements the RFC ladder: --namespace/FLEET_NAMESPACE
-// (the flag carries the env via Sources) → derived personal namespace.
-// Lazy by construction: only called by commands that need a namespace.
-func resolveNamespace(ctx context.Context, cmd *cli.Command, cfg fleetcfg.Config) (string, error) {
-	if ns := cmd.String("namespace"); ns != "" {
-		return ns, nil
+// tenantOptions builds the resolution input shared by every command:
+// flags (which already carry their FLEET_* env sources) over fleet.yaml.
+func tenantOptions(cmd *cli.Command, cfg fleetcfg.Config) fleettest.Options {
+	return fleettest.Options{
+		Kubecontext:       cmd.String("kubecontext"),
+		Kubeconfig:        cmd.String("kubeconfig"),
+		Namespace:         cmd.String("namespace"),
+		Release:           cmd.String("release"),
+		App:               cmd.String("app"),
+		PersonalNamespace: stringOr(cmd.String("personal-namespace"), cfg.PersonalNamespace),
+		GroupPrefix:       stringOr(cmd.String("group-prefix"), cfg.GroupPrefix),
 	}
-
-	user, err := kubewho.WhoAmI(ctx, kubewho.Options{
-		Kubecontext: cmd.String("kubecontext"),
-		Kubeconfig:  cmd.String("kubeconfig"),
-	})
-	if err != nil {
-		return "", err
-	}
-
-	prefix := stringOr(cmd.String("group-prefix"), cfg.GroupPrefix, "emp:")
-
-	slug, err := kubewho.GroupPrefixed(user, prefix)
-	if err != nil {
-		return "", err
-	}
-
-	template := stringOr(cmd.String("personal-namespace"), cfg.PersonalNamespace, "")
-
-	return fleetcfg.RenderNamespace(template, slug)
 }
 
-// runBuildHook executes the repo-owned opaque build argv with the
+// projectName keys the per-project hooks; the app is the project unless
+// the caller says otherwise.
+func projectName(cmd *cli.Command) string {
+	return stringOr(cmd.String("project"), cmd.String("app"))
+}
+
+// runBuildHook executes the repo-owned opaque build argv — the project's
+// own hook when fleet.yaml defines one, else the global hook — with the
 // resolved FLEET_* env exported.
-func runBuildHook(ctx context.Context, cfg fleetcfg.Config, namespace, kubecontext string) error {
-	if len(cfg.Hooks.Build) == 0 {
-		return fmt.Errorf("--build: no hooks.build configured in fleet.yaml")
+func runBuildHook(
+	ctx context.Context,
+	cfg fleetcfg.Config,
+	project string,
+	tenant fleettest.Tenant,
+	kubecontext string,
+) error {
+	hook := cfg.BuildHook(project)
+	if len(hook) == 0 {
+		return fmt.Errorf("--build: no hooks.build in fleet.yaml (global or projects.%s.hooks.build)",
+			stringOr(project, "<project>"))
 	}
 
-	return runPassthrough(ctx, "", namespace, kubecontext, cfg.Hooks.Build[0], cfg.Hooks.Build[1:]...)
+	return runPassthrough(ctx, "", tenant, kubecontext, hook[0], hook[1:]...)
 }
 
 // runPassthrough runs a subprocess with stdio attached and the resolved
 // FLEET_* env re-exported (the RFC's bidirectional-variable rule).
-func runPassthrough(ctx context.Context, kubeconfig, namespace, kubecontext, name string, args ...string) error {
+func runPassthrough(
+	ctx context.Context,
+	kubeconfig string,
+	tenant fleettest.Tenant,
+	kubecontext, name string,
+	args ...string,
+) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	cmd.Env = os.Environ()
-
-	if namespace != "" {
-		cmd.Env = append(cmd.Env, "FLEET_NAMESPACE="+namespace)
-	}
-
-	if kubecontext != "" {
-		cmd.Env = append(cmd.Env, "FLEET_KUBECONTEXT="+kubecontext)
-	}
+	cmd.Env = append(os.Environ(), tenant.Env(kubecontext)...)
 
 	if kubeconfig != "" {
 		cmd.Env = append(cmd.Env, "KUBECONFIG="+kubeconfig)
