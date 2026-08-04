@@ -15,8 +15,10 @@ build: fmt
 test:
     go test ./... -coverprofile=coverage.out
 
-# Run linters
+# Run linters. `config verify` first: `run` accepts unknown top-level keys
+# silently, so a settings block in the wrong place is otherwise invisible.
 lint:
+    golangci-lint config verify
     golangci-lint run ./...
 
 # Run Go vulnerability check
