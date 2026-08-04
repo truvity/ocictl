@@ -7,7 +7,6 @@ package fleetcfg
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -26,8 +25,15 @@ type Config struct {
 	// registry — no name indirection) to per-cluster deploy inputs.
 	Clusters map[string]Cluster `yaml:"clusters"`
 
-	// Hooks are opaque commands wired by --build.
+	// Hooks are opaque commands wired by --build — the repo-global
+	// fallback for every project.
 	Hooks Hooks `yaml:"hooks"`
+
+	// Projects carries per-project overrides, keyed by project name.
+	// Deliberately hooks-only: a monorepo builds each project its own
+	// way, but this tool still has no project model (see the Non-goals
+	// table in docs/rfc-fleet.md).
+	Projects map[string]Project `yaml:"projects"`
 }
 
 // Cluster is one kubecontext's deploy inputs.
@@ -37,11 +43,27 @@ type Cluster struct {
 	Values map[string]any `yaml:"values"`
 }
 
+// Project is one project's overrides. Hooks only, on purpose.
+type Project struct {
+	Hooks Hooks `yaml:"hooks"`
+}
+
 // Hooks are repo-owned commands this tool runs but never interprets.
 type Hooks struct {
 	// Build is an argv executed by `deploy --build` / `test --build`
 	// with the resolved FLEET_* env exported.
 	Build []string `yaml:"build"`
+}
+
+// BuildHook returns the effective build hook for a project: the project's
+// own hooks.build when it sets one, otherwise the repo-global hooks.build.
+// An empty project name (or an unknown one) asks for the global hook.
+func (c Config) BuildHook(project string) []string {
+	if p, ok := c.Projects[project]; ok && len(p.Hooks.Build) > 0 {
+		return p.Hooks.Build
+	}
+
+	return c.Hooks.Build
 }
 
 // DefaultPath is where Load looks when no path is given.
@@ -69,19 +91,4 @@ func Load(path string) (Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// RenderNamespace renders the personal-namespace template with a slug.
-// The only substitution is {slug} — kept deliberately dumb.
-func RenderNamespace(template, slug string) (string, error) {
-	if template == "" {
-		return "", fmt.Errorf(
-			"no personal-namespace template configured (personalNamespace in fleet.yaml or FLEET_PERSONAL_NAMESPACE)")
-	}
-
-	if !strings.Contains(template, "{slug}") {
-		return "", fmt.Errorf("personal-namespace template %q must contain {slug}", template)
-	}
-
-	return strings.ReplaceAll(template, "{slug}", slug), nil
 }

@@ -1,7 +1,8 @@
 # RFC: `fleetctl` — identity- and namespace-aware Kubernetes primitives
 
-Status: **draft v2** (2026-08-03, rewritten after design review). Pilot
-target: one downstream project before anything freezes.
+Status: **draft v3** (2026-08-04, amended after the pilot: tenancy is
+standing, not ephemeral). Freeze at v1 once the pilot's harness
+re-alignment lands.
 
 ## Problem
 
@@ -13,8 +14,10 @@ capabilities nothing currently owns:
    developer namespaces), and cluster facts (account IDs, IAM boundaries,
    auth mode) live in the infrastructure repository, which product
    engineers should not need access to.
-2. **Integration-test against a real cluster in an ephemeral namespace** —
-   create, deploy, run, tear down, reliably.
+2. **Integration-test against a real cluster in the same tenant an
+   engineer and CI both use** — resolve the tenant, run, and leave the
+   cluster exactly as found. Creating a namespace per run is one way to
+   get a tenant; it is no longer the way this fleet gets one.
 
 Everything else in the build-and-ship path already has an owner, and this
 tool must not compete with any of them.
@@ -29,6 +32,8 @@ tool must not compete with any of them.
 | Cluster registry ("which clusters exist, how to reach them") | kubeconfig |
 | Cluster facts ("what is true about this cluster") | `fleet.yaml`, committed (see below) |
 | Credentials: registry auth, AWS profiles, kubeconfig generation | ambient environment |
+| Namespace lifecycle (who may exist, quotas, netpol) | the infrastructure repository |
+| Reaping stale test installs | an external janitor |
 | CD / promotion | a different tool |
 | Secrets | never |
 
@@ -43,8 +48,12 @@ build-system tasks**, not an orchestrator with a project model.
   This tool never parses kubeconfig and never imports client-go.
 - **Every registry has exactly one owner.** No config section here may
   mirror kubeconfig, the infra repo, or the build system's task graph.
-- **Org semantics are parameters.** Group prefixes and namespace templates
-  are configuration; the tool ships no organization defaults.
+- **Org semantics are parameters.** Group prefixes and namespace
+  templates are configuration, always overridable; the conventional
+  `emp:` / `emp-{slug}` pair ships as a default so the common case needs
+  no config, and nothing else about an organization is baked in.
+- **Never destroy what you did not create.** The harness owns a lifecycle
+  only when a caller explicitly asks for one.
 
 ## Commands
 
@@ -54,16 +63,18 @@ it the same way (`go run github.com/truvity/ocictl/cmd/fleetctl@vX`).
 
 ```
 fleetctl deploy -c <kubecontext> --chart <ref|path> [--build] [release]
-    # helm upgrade --install into the resolved namespace, with the
+    # helm upgrade --install into the resolved tenant, with the
     # cluster's values from fleet.yaml merged as .Values.fleet;
     # --chart takes a LOCAL PATH or an OCI ref — the local-chart dev
     # loop is first-class
 
-fleetctl test [-c <kubecontext>] [--prefix it-] [--keep] [--build] -- <command...>
-    # ephemeral namespace → run command → teardown
+fleetctl test [-c <kubecontext>] [--ephemeral [--prefix it-] [--keep]] [--build] -- <command...>
+    # resolve the tenant → export FLEET_* → run command
+    # --ephemeral opts into namespace lifecycle: create → run → teardown
 
 fleetctl whoami [-c <kubecontext>]
-    # debug: the cluster's view of the caller + the resolved namespace
+    # debug: the cluster's view of the caller + the resolved tenant
+    # (namespace AND release)
 ```
 
 `--build` runs the repo's configured build hook first (see Build
@@ -72,28 +83,68 @@ integration) — the one-command dev loop without absorbing the build.
 `-c` takes a **kubecontext name directly** (e.g. `devel@oidc`) — there is
 no cluster-name indirection, because kubeconfig is the cluster registry.
 
-## Identity and namespace resolution
+## Tenancy: the tenant is `(namespace, release)`
 
-Commands that target a namespace resolve it in this order:
+A tenant is one install. Both halves resolve together, through **one
+path** (`fleettest.Resolve`) that `deploy`, `test` and `whoami` all call,
+so no two commands can disagree about which install they mean.
 
-1. `--namespace` flag
+Two modes:
+
+| Mode | Namespace | Lifecycle |
+|---|---|---|
+| **standing** (default) | already exists — an employee's `emp-{slug}`, or CI's static `ci-<org>-<repo>` | **none**: nothing is created, nothing is deleted |
+| **ephemeral** (`--ephemeral` / `Options.Ephemeral`) | `{prefix}{git-sha}` | create → run → delete (`--keep` preserves it) |
+
+Standing is the default because it is the safe one: a harness that never
+creates and never deletes cannot destroy anything. Ephemeral remains a
+generic library capability for consumers that want a throwaway namespace.
+**The fleet operating this tool uses standing tenancy exclusively** —
+employees run a standing install in their own namespace, CI runs a
+TTL-reaped release in the repo's static namespace; namespaces are
+infrastructure rows, and an external janitor owns expiry.
+
+**Namespace ladder:**
+
+1. `--namespace` flag / `Options.Namespace`
 2. **`FLEET_NAMESPACE`** env var — the CI/robot path: robots name a
    namespace outright and no identity machinery runs. Deliberately
    bidirectional: read as an override when the caller set it, and always
    re-exported with the RESOLVED value into child processes — the same
    pattern as `KUBECONFIG`.
-3. Derived personal namespace: `kubectl auth whoami -o json` against the
-   target kubecontext returns the cluster's own view of the caller; the
-   organization's identity platform embeds a short identifier as a
-   prefixed entry in the groups claim (prefix is configuration, e.g.
-   `emp:`), and the personal-namespace template renders it
-   (`emp-{slug}`). **Exactly-one semantics** on the prefixed group: zero
-   or multiple matches are hard errors, never guesses.
+3. Standing: derived personal namespace — `kubectl auth whoami -o json`
+   against the target kubecontext returns the cluster's own view of the
+   caller; the organization's identity platform embeds a short identifier
+   as a prefixed entry in the groups claim (prefix is configuration,
+   default `emp:`), and the personal-namespace template renders it
+   (default `emp-{slug}`). **Exactly-one semantics** on the prefixed
+   group: zero or multiple matches are hard errors, never guesses.
+   Ephemeral: `{prefix}{git-sha}` instead — no identity involved.
 
-Resolution is **lazy**: only commands that need a namespace and were
-given none resolve identity. Machine identities (CI runners) never carry
-the prefixed group by construction, so a robot falling into the human
-code path fails crisply instead of impersonating anyone.
+**Release ladder:**
+
+1. `--release` flag / `Options.Release` (`deploy`'s positional argument
+   wins over both)
+2. **`FLEET_RELEASE`** env var — bidirectional, like `FLEET_NAMESPACE`
+3. CI, detected by environment rather than by flag: `GITHUB_RUN_NUMBER`
+   present → `r{run_number}-a{attempt}` (`GITHUB_RUN_ATTEMPT`, default
+   `1`). Run numbers are per-repo-unique and the namespace carries the
+   repo, so the pair is unique.
+4. `--app` / `Options.App` — the plain app name, i.e. an employee's
+   standing install
+5. ephemeral only: the ephemeral namespace (one release per namespace)
+
+No rung matching is an **error**, never a guess.
+
+**Bounds are asserted, not discovered in production**: release names are
+capped at 53 characters (Helm), namespaces at 63 (RFC1123 label), and
+both must be RFC1123 labels. A name that helm or the API server would
+reject fails here instead, with the offending name in the message.
+
+Resolution is **lazy**: only commands that need a tenant and were given
+none resolve identity. Machine identities (CI runners) never carry the
+prefixed group by construction, so a robot falling into the human code
+path fails crisply instead of impersonating anyone.
 
 Tuning (applies to `auth whoami` and every other kubectl this tool
 spawns, so there is never a which-kubeconfig split-brain):
@@ -123,8 +174,13 @@ clusters:
       authMode: pod-identity
       permissionsBoundary: arn:aws:iam::...:policy/...
 
-hooks:
+hooks:                     # repo-global fallback
   build: ["goreleaser", "release", "--snapshot", "--clean"]
+
+projects:                  # optional per-project override — HOOKS ONLY
+  url-shortener:
+    hooks:
+      build: ["moon", "run", "url-shortener:build"]
 ```
 
 `values` is **opaque**: merged into the release as `.Values.fleet`,
@@ -151,12 +207,18 @@ the hook's build and the chart's values derive tags from the git sha —
 not by protocol. Without `--build` (the CI/moon path), the build system
 sequences goreleaser/helmctl itself and fleetctl only deploys/tests.
 
+A monorepo builds each project its own way, so the hook resolves
+**per project**: `projects.<name>.hooks.build` when set, the global
+`hooks.build` otherwise. `<name>` is `--project`, defaulting to `--app`.
+This is the only per-project key — there is still no project model here
+(see Non-goals).
+
 ## Test harness: one core, two entry points
 
 **CLI** (any language, natural in build-system tasks):
 
 ```bash
-fleetctl test -c devel@oidc --prefix it- -- go test ./svc/... -tags integration
+fleetctl test -c devel@oidc --app url-shortener -- go test ./svc/... -tags integration
 ```
 
 **Go library** (`pkg/fleettest`, the TestMain path):
@@ -164,33 +226,52 @@ fleetctl test -c devel@oidc --prefix it- -- go test ./svc/... -tags integration
 ```go
 func TestMain(m *testing.M) {
     os.Exit(fleettest.Run(m, fleettest.Options{
-        Kubecontext:     "devel@oidc",
-        NamespacePrefix: "it-",
+        Kubecontext: "devel@oidc",
+        App:         "url-shortener",
     }))
 }
 ```
 
-Both share one implementation: create `{prefix}{git-sha}`, set/export
-`FLEET_NAMESPACE` + `FLEET_KUBECONTEXT`, run, tear down (`--keep` /
-`Options.Keep` preserves the namespace for debugging). The library adds
-in-process accessors (`fleettest.Namespace()`) so tests avoid env-var
-spelunking. The core shells out to kubectl for namespace lifecycle —
-same zero-dependency rule as everything else.
+Both share one implementation: resolve the tenant, set/export
+`FLEET_NAMESPACE` + `FLEET_RELEASE` + `FLEET_KUBECONTEXT`, run. Standing
+mode stops there — **no teardown, because there was no setup**. Ephemeral
+mode adds the lifecycle around it, and creation is **idempotent**: a
+namespace left behind by a previous run (a crash, `--keep`, a deliberate
+re-run) is reused with a log line, never a hard failure.
+
+Re-runs against a standing install are the normal case, so tests must
+tolerate pre-existing data: tag what you create with an execution id and
+assert only on that. Global-count assertions ("expect 0 records") do not
+survive a standing tenant — that is a property of the tests, which this
+tool cannot enforce and does not try to.
+
+The library adds in-process accessors (`fleettest.Namespace()`,
+`fleettest.Release()`) so tests avoid env-var spelunking, and
+`fleettest.Resolve` for callers that want the tenant and nothing else.
+The core shells out to kubectl for namespace lifecycle — same
+zero-dependency rule as everything else.
 
 ## Libraries
 
 - `pkg/kubewho` — `kubectl auth whoami` wrapper: caller identity +
   prefixed-group extraction (exactly-one semantics).
-- `pkg/fleettest` — the ephemeral-namespace harness above.
+- `pkg/fleettest` — tenant resolution (`Resolve`, `Tenant`) plus the
+  harness above; `Options.WhoAmI` is the seam that keeps resolution
+  unit-testable without a cluster.
 
 Both stdlib-only; kubectl in `PATH` is the single runtime requirement.
+(`pkg/fleetcfg` parses `fleet.yaml` and therefore carries the YAML
+dependency; nothing in the test path imports it.)
 
 ## Configuration precedence
 
-Flags → `FLEET_*` env (`FLEET_PERSONAL_NAMESPACE`, `FLEET_GROUP_PREFIX`,
-`FLEET_KUBECONTEXT`, `FLEET_KUBECONFIG`, `FLEET_NAMESPACE`) →
-`fleet.yaml`. The file is the committed shared default; env/flags are
-the per-invocation override, never the other way around.
+Flags → `FLEET_*` env (`FLEET_NAMESPACE`, `FLEET_RELEASE`, `FLEET_APP`,
+`FLEET_PROJECT`, `FLEET_PERSONAL_NAMESPACE`, `FLEET_GROUP_PREFIX`,
+`FLEET_KUBECONTEXT`, `FLEET_KUBECONFIG`, `FLEET_CONFIG`) → `fleet.yaml`.
+The file is the committed shared default; env/flags are the
+per-invocation override, never the other way around. `GITHUB_RUN_NUMBER`
+/ `GITHUB_RUN_ATTEMPT` are read, never written: they are facts about the
+runner, not configuration.
 
 ## Out of scope — explicitly
 
@@ -204,15 +285,16 @@ the per-invocation override, never the other way around.
    `fleetctl values` primitives piped into plain `helm upgrade` by the
    build system? (Current stance: composite — the values-merge deserves
    one tested implementation.)
-2. Build-hook shape: single `hooks.build` vs named hooks per command
-   (`hooks.deploy-build`, `hooks.test-build`) — pilot decides whether
-   one hook suffices.
+2. Build-hook shape: ~~single `hooks.build` vs named hooks per
+   command~~ — **answered 2026-08-04**: one hook name, resolved per
+   project (`projects.<name>.hooks.build` → `hooks.build`). Per-command
+   hooks were not the missing axis; per-project was.
 
 ## Stability contract
 
 Stabilize **once**: v0 during the pilot (breaking changes allowed),
 frozen at v1 immediately after — additive-only and bugfix releases from
-then on. The surface is deliberately tiny (three commands, four env
+then on. The surface is deliberately tiny (three commands, nine env
 vars, two libraries), so there is little to churn.
 
 ## Rollout
@@ -222,5 +304,8 @@ vars, two libraries), so there is little to churn.
    identity-platform claim the prefixed-group extraction reads.
 3. **Pilot on exactly one downstream project** (smallest real service),
    wired through its build-system tasks. Friction changes v0 freely.
-4. Freeze v1. Other projects adopt at their own pace; incumbent tooling
+4. **Realign on the pilot's findings** (2026-08-04): standing tenancy
+   becomes the default, the release joins the namespace in the tenant
+   identity, hooks resolve per project.
+5. Freeze v1. Other projects adopt at their own pace; incumbent tooling
    keeps serving them until they do.
