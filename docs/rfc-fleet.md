@@ -53,7 +53,8 @@ build-system tasks**, not an orchestrator with a project model.
   `emp:` / `emp-{slug}` pair ships as a default so the common case needs
   no config, and nothing else about an organization is baked in.
 - **Never destroy what you did not create.** The harness owns a lifecycle
-  only when a caller explicitly asks for one.
+  only when a caller explicitly asks for one, and even then only over the
+  namespaces it created itself (see Teardown).
 
 ## Commands
 
@@ -94,7 +95,7 @@ Two modes:
 | Mode | Namespace | Lifecycle |
 |---|---|---|
 | **standing** (default) | already exists — an employee's `emp-{slug}`, or CI's static `ci-<org>-<repo>` | **none**: nothing is created, nothing is deleted |
-| **ephemeral** (`--ephemeral` / `Options.Ephemeral`) | `{prefix}{git-sha}` | create → run → delete (`--keep` preserves it) |
+| **ephemeral** (`--ephemeral` / `Options.Ephemeral`) | `{prefix}{git-sha}` | create → run → **synchronous** delete, and only of a namespace this run both named and created (`--keep` preserves it) |
 
 Standing is the default because it is the safe one: a harness that never
 creates and never deletes cannot destroy anything. Ephemeral remains a
@@ -239,6 +240,38 @@ mode adds the lifecycle around it, and creation is **idempotent**: a
 namespace left behind by a previous run (a crash, `--keep`, a deliberate
 re-run) is reused with a log line, never a hard failure.
 
+### Teardown
+
+Two rules, both learned from the pilot's consumer.
+
+**Teardown deletes only what this run created, under a name this harness
+chose.** "Never destroy what you did not create" is a design principle
+above, and reuse is the case that quietly broke it: the idempotent-create
+path adopts a pre-existing namespace, and deleting it on the way out
+destroys somebody else's tenant. A namespace named by the caller
+(`--namespace` / `Options.Namespace` / `FLEET_NAMESPACE`) is likewise left
+alone even when this run happened to create it — a pinned name belongs to
+whoever pinned it. Both cases log the reason they are being kept.
+Reaping what is left behind is the external janitor's job (see
+Non-goals), not this harness's.
+
+**Teardown is synchronous, on its own budget.** `kubectl delete namespace`
+returns as soon as the API accepts it, but the namespace then sits in
+`Terminating` until every finalizer on its content has run — CNPG
+clusters, ACK resources and NATS accounts take minutes. Returning early
+makes two failures indistinguishable from success: the caller cannot tell
+teardown finished, and the next run of the same commit meets a namespace
+that is neither present nor absent, so it either mistakes it for reusable
+or fails its own create. So the delete waits, passes kubectl an explicit
+`--timeout` (a stuck namespace is reported as "timed out waiting for the
+condition", not killed by a context deadline), and `--ignore-not-found`
+keeps a namespace the janitor already reaped from counting as a failure.
+
+That wait is a different order of magnitude from the create/probe path, so
+it gets a **separate** budget — `Options.TeardownTimeout`, default 10m,
+against `Options.Timeout`'s 60s for the API round-trips. One number could
+not serve both.
+
 Re-runs against a standing install are the normal case, so tests must
 tolerate pre-existing data: tag what you create with an execution id and
 assert only on that. Global-count assertions ("expect 0 records") do not
@@ -306,6 +339,7 @@ vars, two libraries), so there is little to churn.
    wired through its build-system tasks. Friction changes v0 freely.
 4. **Realign on the pilot's findings** (2026-08-04): standing tenancy
    becomes the default, the release joins the namespace in the tenant
-   identity, hooks resolve per project.
+   identity, hooks resolve per project; ephemeral teardown becomes
+   synchronous, separately budgeted, and scoped to what the run created.
 5. Freeze v1. Other projects adopt at their own pace; incumbent tooling
    keeps serving them until they do.
