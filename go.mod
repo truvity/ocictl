@@ -2,6 +2,8 @@ module github.com/truvity/ocictl
 
 go 1.26.5
 
+toolchain go1.26.6
+
 require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
