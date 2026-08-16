@@ -35,6 +35,10 @@ go run github.com/truvity/ocictl/cmd/helmctl@latest --help
 go run github.com/truvity/ocictl/cmd/crdctl@latest --help
 ```
 
+Consuming this from another repository — pinning the version in `go.mod`,
+a `bin/helmctl` wrapper, and devbox PATH so employees and CI run the same
+binary — is **[docs/consuming.md](docs/consuming.md)**.
+
 ## Usage
 
 ### helmctl + GoReleaser: deterministic immutable charts
