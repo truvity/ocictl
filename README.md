@@ -10,6 +10,9 @@ Deterministic OCI chart packaging and CRD repack tooling.
 
 ## Tools
 
+AI agents: start with **[AGENTS.md](AGENTS.md)** — the exhaustive command
+surface and the rules for documenting it.
+
 | Binary      | Purpose                                                    |
 | ----------- | ---------------------------------------------------------- |
 | **helmctl** | Deterministic Helm chart packaging + OCI push (GHCR + ECR) |
