@@ -1,8 +1,6 @@
 module github.com/truvity/ocictl
 
-go 1.26.5
-
-toolchain go1.26.6
+go 1.26.7
 
 require (
 	github.com/opencontainers/go-digest v1.0.0
