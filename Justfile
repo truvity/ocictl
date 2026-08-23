@@ -33,8 +33,25 @@ tidy:
 clean:
     rm -rf dist/ coverage.out .cache/ charts/*/templates/
 
-# Run all checks (build + test + lint + vuln)
-check: build test lint vuln
+# Build every CRD chart and validate the schema contract: the charts
+# take no values, and values.schema.json makes configuring them a loud
+# error instead of a silent no-op.
+chart-lint: build crd-build-all
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in charts/*/; do
+        chart="$(basename "$dir")"
+        helm lint "$dir" >/dev/null
+        helm template "$chart" "$dir" >/dev/null
+        if helm template "$chart" "$dir" --set anything=1 >/dev/null 2>&1; then
+            echo "ERROR: $chart accepted an unknown value — values.schema.json not enforced"
+            exit 1
+        fi
+    done
+    echo "chart-lint: all CRD charts render and reject unknown values"
+
+# Run all checks (build + test + lint + chart-lint + vuln)
+check: build test lint chart-lint vuln
 
 # Build a snapshot release locally (no push, no tag)
 snapshot:
