@@ -30,8 +30,24 @@ helmctl push --tgz dist/myproject/charts/myproject-1.2.3.tgz \
 ```
 
 Because the two `helmctl` steps only read files from `dist/`, ordering is
-trivially safe: once the `goreleaser` process has exited, `artifacts.json`
-and `metadata.json` are complete.
+trivially safe **within one job**: once the `goreleaser` process has
+exited, `artifacts.json` and `metadata.json` are complete.
+
+> **Across jobs it is not safe, and the failure is silent.** A pipeline
+> that packages charts in one job and builds images in another has a
+> `dist/` without images wherever the chart step runs first. There is
+> nothing to read, so the chart is packaged from the tag with its image
+> values left at their defaults — usually empty. It renders, it pushes,
+> the run is green, and the published chart cannot install.
+>
+> Nothing inside the repository can see this: every chart test supplies
+> images of its own. It surfaces the first time somebody installs the
+> published artifact.
+>
+> Keep `goreleaser` and both `helmctl` steps in **one job**, in that
+> order. Then the chart is packaged from a file that does not exist until
+> the images are pushed, and the ordering cannot be got wrong.
+> `--require-image-digests` is the belt to that braces.
 
 ## What `goreleaser-manifest` reads
 
@@ -86,6 +102,26 @@ restructure repositories. Archive the manifest as a build artifact and
 (or a human) can produce this file. The `goreleaser-manifest` subcommand is
 just one converter.
 
+## The repository the manifest names is the one ko published to
+
+`goreleaser-manifest` reports what the build *did*, not what it was asked
+to do. That is the point — but it means a build that published to the
+wrong place produces a manifest that faithfully names the wrong place, and
+the chart is pinned to it.
+
+The way this happens in practice: **ko reads `KO_DOCKER_REPO` from the
+environment, and it overrides a `repositories:` set in the GoReleaser
+configuration.** Silently. Combined with `bare: true` the images land at
+exactly that value, so six components can all publish to one repository
+and the first sign is an unrelated error afterwards — an SBOM write
+rejected by a registry path nobody meant to use.
+
+If you name repositories in the configuration, make sure nothing is
+setting `KO_DOCKER_REPO` behind you. If something is (a shared CI
+workflow, say), the reliable shape is the one ko has always had:
+`KO_DOCKER_REPO` holds the destination and `base_import_paths: true`
+appends each command's own name.
+
 ## Chart-side conventions
 
 Declare per-component image values with the standard split fields, and
@@ -129,6 +165,14 @@ build fails if any `images.*` entry in the final values lacks a digest.
 The pipeline is identical for both — if the build published images,
 `artifacts.json` has digests and the chart packages the same way. Whether a
 snapshot's chart is *pushed* anywhere is your policy, not this tool's.
+
+**A `--snapshot` build publishes no images at all**, and that is worth
+stating because it makes snapshots useless for proving this pipeline.
+GoReleaser says so (`snapshot build: will not push any images`), ko writes
+to `goreleaser.ko.local/<hash>` whatever repository is configured, and
+`dockers_v2` produces per-architecture local tags rather than one index. A
+snapshot therefore cannot tell you that your images land where you meant,
+or under the name you meant. Only a real publish can.
 
 ## Go API
 
