@@ -105,7 +105,17 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 		return nil, fmt.Errorf("inject Chart.yaml: %w", err)
 	}
 
-	if err := InjectValues(chartTmp, cfg.ValuesOverlay); err != nil {
+	// A manifest describes a BUILD; a chart declares what it uses. One
+	// repository often publishes several charts from one build, so the
+	// overlay is narrowed to what this chart actually declares before any
+	// of it is written. See RestrictImagesToDeclared for what giving a
+	// chart an image it never declared does to it.
+	overlay, err := RestrictImagesToDeclared(chartTmp, cfg.ValuesOverlay)
+	if err != nil {
+		return nil, fmt.Errorf("narrow values overlay: %w", err)
+	}
+
+	if err := InjectValues(chartTmp, overlay); err != nil {
 		return nil, fmt.Errorf("inject values.yaml: %w", err)
 	}
 

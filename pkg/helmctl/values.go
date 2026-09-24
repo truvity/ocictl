@@ -55,6 +55,104 @@ func InjectValues(chartDir string, overlay map[string]any) error {
 	return nil
 }
 
+// RestrictImagesToDeclared narrows an overlay's `images` map to the entries
+// the chart actually declares, and removes it entirely from a chart that
+// declares no `images` key at all.
+//
+// A release manifest is built from everything the build produced, but a
+// repository commonly publishes several charts from one build — an
+// application and the data resources it runs against, say. Without this,
+// every chart receives every image: the ones it does not use arrive as
+// values it never declared.
+//
+// That is not cosmetic. A chart whose values.schema.json sets
+// `additionalProperties: false` is made UNINSTALLABLE by the extra key,
+// and not for one set of values but for every set, including none — the
+// schema is checked before any template runs. The chart publishes, the
+// release is green, and the failure appears only when somebody installs
+// it. A chart that declares no images has nothing a manifest can say
+// about it.
+//
+// The overlay is not modified; a copy is returned.
+func RestrictImagesToDeclared(chartDir string, overlay map[string]any) (map[string]any, error) {
+	if len(overlay) == 0 {
+		return overlay, nil
+	}
+
+	if _, ok := overlay["images"]; !ok {
+		return overlay, nil
+	}
+
+	declared, err := declaredImages(chartDir)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]any, len(overlay))
+	for k, v := range overlay {
+		out[k] = v
+	}
+
+	// No `images` key in the chart's own values: it has no images, so the
+	// manifest has nothing to contribute and must not add the key.
+	if declared == nil {
+		delete(out, "images")
+
+		return out, nil
+	}
+
+	images, ok := out["images"].(map[string]any)
+	if !ok {
+		return out, nil
+	}
+
+	kept := make(map[string]any, len(images))
+
+	for name, img := range images {
+		if declared[name] {
+			kept[name] = img
+		}
+	}
+
+	out["images"] = kept
+
+	return out, nil
+}
+
+// declaredImages returns the set of image names under the chart's top-level
+// `images:` map, or nil when the chart declares no such key. An empty map
+// and a missing one are different answers and the caller acts on each
+// differently, which is why this does not collapse them.
+func declaredImages(chartDir string) (map[string]bool, error) {
+	data, err := os.ReadFile(filepath.Join(chartDir, "values.yaml")) //nolint:gosec // temp chart copy
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("read values.yaml: %w", err)
+	}
+
+	var values struct {
+		Images map[string]yaml.Node `yaml:"images"`
+	}
+
+	if err := yaml.Unmarshal(data, &values); err != nil {
+		return nil, fmt.Errorf("parse values.yaml: %w", err)
+	}
+
+	if values.Images == nil {
+		return nil, nil
+	}
+
+	declared := make(map[string]bool, len(values.Images))
+	for name := range values.Images {
+		declared[name] = true
+	}
+
+	return declared, nil
+}
+
 // RequireImageDigests verifies that every entry under the top-level
 // `images:` map in the chart's values.yaml carries a non-empty digest.
 // Guards published charts against mutable references sneaking through.
