@@ -25,6 +25,12 @@ lint:
 vuln:
     govulncheck ./...
 
+# Scan tracked files for leaked particulars (account ids, ARNs, internal
+# hostnames, tokens) — this repo is public and its history cannot be
+# unpublished.
+leak-canary:
+    hack/leak-canary.sh
+
 # Run go mod tidy
 tidy:
     go mod tidy
@@ -50,8 +56,8 @@ chart-lint: build crd-build-all
     done
     echo "chart-lint: all CRD charts render and reject unknown values"
 
-# Run all checks (build + test + lint + chart-lint + vuln)
-check: build test lint chart-lint vuln
+# Run all checks (build + test + lint + chart-lint + vuln + leak-canary)
+check: build test lint chart-lint vuln leak-canary
 
 # Build a snapshot release locally (no push, no tag)
 snapshot:

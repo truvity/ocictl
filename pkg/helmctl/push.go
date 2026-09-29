@@ -23,7 +23,8 @@ type (
 	PushConfig struct {
 		// TgzPath is the path to the packaged .tgz file.
 		TgzPath string
-		// Registry is the OCI registry URL (e.g., "ghcr.io" or "721506300184.dkr.ecr.eu-central-1.amazonaws.com").
+		// Registry is the OCI registry URL, e.g. "ghcr.io" or an ECR host
+		// (<account-id>.dkr.ecr.<region>.amazonaws.com).
 		Registry string
 		// Repository is the chart path within the registry (e.g., "truvity/charts/cilium-crds").
 		Repository string
