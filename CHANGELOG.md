@@ -3,6 +3,32 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.6.1 — 2026-09-24
+
+### Fixed
+
+- **`helmctl package` no longer injects every declared image into every
+  chart** — a chart is now given only the images it actually declares.
+
+## v0.6.0 — 2026-09-20
+
+### Added
+
+- **Strict `values.schema.json` for every CRD chart** — `cilium-crds`,
+  `barman-cloud-crds` and `volume-snapshot-crds` now reject an unknown
+  value instead of silently accepting it (`just chart-lint` checks this).
+
+### Fixed
+
+- Repaired mangled `runs-on`/`timeout` lines in the workflow files.
+
+### Other
+
+- `cilium-crds` tracks Cilium 1.20.1.
+- Renovate and devbox-update now run from the shared `ci-caller` fleet job
+  instead of a per-repo workflow.
+- Shared CI bumped to `ci-workflows` v3.0.1.
+
 ## v0.5.0 — 2026-08-06
 
 ### Breaking
