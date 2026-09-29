@@ -143,7 +143,7 @@ unpublished once a particular has landed in it.
 
 ## Status
 
-- Latest release: **v0.6.1** (2026-09-24) — see the
+- Latest release: **v0.6.2** (2026-09-29) — see the
   [releases page](https://github.com/truvity/ocictl/releases) for every tag.
 - Published to GHCR at `ghcr.io/truvity/charts/{name}:{version}`:
 
