@@ -86,7 +86,7 @@ commit: 648e1a2…        # traceability
 values:                 # deep-merged into the chart's values.yaml
   images:
     redirect:
-      registry: 721506300184.dkr.ecr.eu-central-1.amazonaws.com
+      registry: <account-id>.dkr.ecr.eu-example-1.amazonaws.com
       repository: url-shortener/redirect
       tag: "1.6.1"
       digest: sha256:90c13588…

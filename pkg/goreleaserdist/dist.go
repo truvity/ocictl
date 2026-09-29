@@ -30,7 +30,7 @@ import (
 type (
 	// Image is one published container image (multi-arch index).
 	Image struct {
-		// Registry host, e.g. "721506300184.dkr.ecr.eu-central-1.amazonaws.com".
+		// Registry host, e.g. "<account-id>.dkr.ecr.eu-example-1.amazonaws.com".
 		Registry string `json:"registry" yaml:"registry"`
 		// Repository path within the registry, e.g. "url-shortener/redirect".
 		Repository string `json:"repository" yaml:"repository"`
