@@ -109,11 +109,11 @@ crdctl publish --config charts/cilium-crds/crdctl.yaml \
 
 Who uses ocictl, and through which surface:
 
-| Consumer            | Surface                     |
-| -------------------- | ---------------------------- |
-| truvity/gemaal       | `go tool helmctl`            |
-| opwerm/nexus          | `cilium-crds` chart          |
-| developer machines   | `go run …@vX` (this README)  |
+| Consumer                  | Surface                      |
+| -------------------------- | ------------------------------ |
+| truvity/gemaal            | `go tool helmctl`            |
+| A second, non-AWS estate  | `cilium-crds` chart          |
+| developer machines        | `go run …@vX` (this README)  |
 
 ## Neighbours
 
