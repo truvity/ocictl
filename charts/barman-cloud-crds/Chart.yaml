@@ -2,4 +2,4 @@ apiVersion: v2
 description: CRD definitions for barman-cloud-crds
 name: barman-cloud-crds
 type: application
-version: 0.0.0-dev
+version: 0.0.0

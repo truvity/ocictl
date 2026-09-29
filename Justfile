@@ -41,7 +41,9 @@ clean:
 
 # Build every CRD chart and validate the schema contract: the charts
 # take no values, and values.schema.json makes configuring them a loud
-# error instead of a silent no-op.
+# error instead of a silent no-op. Also proves the golden render under
+# tests/golden/<chart>/ still matches (component contract C3) and that
+# every fixture under tests/invalid/<chart>/ is refused.
 chart-lint: build crd-build-all
     #!/usr/bin/env bash
     set -euo pipefail
@@ -53,8 +55,33 @@ chart-lint: build crd-build-all
             echo "ERROR: $chart accepted an unknown value — values.schema.json not enforced"
             exit 1
         fi
+        golden="tests/golden/$chart/default.yaml"
+        if [ -f "$golden" ]; then
+            if ! diff -u "$golden" <(helm template "$chart" "$dir") >/dev/null; then
+                echo "ERROR: $chart's render no longer matches $golden — 'just golden' to update, then review the diff" >&2
+                exit 1
+            fi
+        fi
+        for fixture in tests/invalid/"$chart"/*; do
+            [ -f "$fixture" ] || continue
+            if helm template "$chart" "$dir" --values "$fixture" >/dev/null 2>&1; then
+                echo "ERROR: $chart accepted $fixture — values.schema.json not enforced" >&2
+                exit 1
+            fi
+        done
     done
-    echo "chart-lint: all CRD charts render and reject unknown values"
+    echo "chart-lint: all CRD charts render, match their golden and reject unknown values"
+
+# Regenerate the golden renders under tests/golden/ — review the diff.
+golden: build crd-build-all
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in charts/*/; do
+        chart="$(basename "$dir")"
+        [ -d "tests/golden/$chart" ] || continue
+        helm template "$chart" "$dir" >"tests/golden/$chart/default.yaml"
+    done
+    echo "golden: regenerated"
 
 # Run all checks (build + test + lint + chart-lint + vuln + leak-canary)
 check: build test lint chart-lint vuln leak-canary
