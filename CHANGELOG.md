@@ -3,6 +3,12 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.6.2
+
+- Leak hygiene: the real ECR host is gone from README, docs and code comments; `hack/leak-canary.sh` runs in `just check`.
+- README pins the install example to a tag, follows the component contract's heading order and gains `Consumers` and `Neighbours`; `docs/rfc-fleet.md` tombstone removed.
+- `renovate.json` extends the shared preset; ci-workflows pins moved to v3.13.1.
+
 ## v0.6.1 — 2026-09-24
 
 ### Fixed
