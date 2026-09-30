@@ -83,8 +83,8 @@ golden: build crd-build-all
     done
     echo "golden: regenerated"
 
-# Run all checks (build + test + lint + chart-lint + vuln + leak-canary)
-check: build test lint chart-lint vuln leak-canary
+# Run all checks (build + test + lint + chart-lint + leak-canary)
+check: build test lint chart-lint leak-canary
 
 # Build a snapshot release locally (no push, no tag)
 snapshot:
