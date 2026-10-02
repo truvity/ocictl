@@ -32,19 +32,28 @@ type (
 		// RequireImageDigests fails packaging unless every entry under
 		// the final values.yaml `images:` map carries a digest.
 		RequireImageDigests bool
-		// VendorDependencies resolves the chart's Chart.yaml dependencies
-		// (`helm dependency build`) before packaging; `helm package` never
-		// resolves them itself. A committed Chart.lock is honoured and a
-		// stale one is refused; file:// (relative to the chart dir),
-		// oci:// and https repositories all work. It runs against the
-		// SOURCE chart dir — file:// repositories resolve relative to it —
-		// so the resulting charts/*.tgz (and Chart.lock, if none was
-		// committed) are build artifacts the owning repo should gitignore.
-		// In the packaged copy Chart.lock's generated timestamp is pinned
-		// and embedded dependency archives are normalised, so the parent
-		// chart's OCI digest stays content-derived. With RequireImageDigests
-		// the dependencies' own `images:` must carry digests too. No-op for
-		// charts without dependencies. The helmctl CLI always sets it.
+		// VendorDependencies enables chart dependency handling:
+		//
+		// Resolution runs (`helm dependency build`) ONLY when a declared
+		// dependency is missing from charts/ — neither
+		// charts/<name>-<version>.tgz nor charts/<name>/ at that version.
+		// When everything is present (a chart that commits its archives and
+		// Chart.lock), packaging is exactly what it was without this
+		// option: no helm dependency step, no network, same bytes.
+		//
+		// When it runs, a committed Chart.lock is honoured and a stale one
+		// refused; file:// (relative to the chart dir), oci:// and https
+		// repositories all work. It runs against the SOURCE chart dir —
+		// file:// repositories resolve relative to it — so the resulting
+		// charts/*.tgz (and Chart.lock, if none was committed) are build
+		// artifacts the owning repo should gitignore. In the packaged copy
+		// Chart.lock's generated timestamp is pinned and embedded
+		// dependency archives are normalised, so the parent chart's OCI
+		// digest stays content-derived.
+		//
+		// With RequireImageDigests the dependencies' own `images:` must
+		// carry digests too, whether or not resolution ran. The helmctl CLI
+		// always sets this option.
 		VendorDependencies bool
 		// OutputDir is where the .tgz is written.
 		OutputDir string
@@ -67,14 +76,26 @@ type (
 // gitignorable dependency artifacts there (see the field doc).
 func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*PackageResult, error) {
 	vendored := false
+	declares := false
 
 	if cfg.VendorDependencies {
-		declares, err := hasDependencies(cfg.ChartDir)
+		var (
+			missing []string
+			err     error
+		)
+
+		declares, missing, err = dependencyState(cfg.ChartDir)
 		if err != nil {
 			return nil, err
 		}
 
-		if declares {
+		// Only a MISSING dependency triggers resolution. Charts that commit
+		// their dependency archives (and Chart.lock) are packaged exactly as
+		// before: no helm dependency step, no network.
+		if len(missing) > 0 {
+			logger.InfoContext(ctx, "dependencies missing from charts/",
+				slog.Any("missing", missing))
+
 			if err := vendorDependencies(ctx, logger, cfg.ChartDir); err != nil {
 				return nil, err
 			}
@@ -134,7 +155,7 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 			return nil, err
 		}
 
-		if vendored {
+		if declares {
 			if err := requireDependencyImageDigests(chartTmp); err != nil {
 				return nil, err
 			}

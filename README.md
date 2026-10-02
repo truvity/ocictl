@@ -100,7 +100,8 @@ smctl serve --config /etc/smctl/config.yaml
 helmctl package --chart charts/cilium-crds --version 1.19.5 --output dist/
 
 # Chart.yaml `dependencies:` (file:// library in the same repo, oci://, https://)
-# are resolved automatically, honouring Chart.lock — see docs/goreleaser.md
+# are resolved only when one is missing from charts/ (honouring Chart.lock);
+# committed archives are packaged as-is, no network — see docs/goreleaser.md
 
 # Push to GHCR
 helmctl push --tgz dist/cilium-crds-1.19.5.tgz \

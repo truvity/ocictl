@@ -97,6 +97,11 @@ dependencies:
 
 	// Determinism: a second run (later wall clock, fresh helm dep update)
 	// must normalize to identical bytes.
+	// Start from a clean source (no charts/, no lock) so the second run
+	// resolves again: dependencies already present are not re-resolved.
+	_ = os.RemoveAll(filepath.Join(parentDir, "charts"))
+	_ = os.Remove(filepath.Join(parentDir, "Chart.lock"))
+
 	second := packageOnce(t, parentDir)
 
 	n1, err := NormalizeTgz(first)

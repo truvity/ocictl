@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const depParentYAML = `apiVersion: v2
@@ -196,14 +197,15 @@ func TestPackageHonoursCommittedLock(t *testing.T) {
 }
 
 func TestPackageDependencyDeterministic(t *testing.T) {
-	parentDir := depFixture(t, "")
-
-	first, err := packageWith(t, PackageConfig{ChartDir: parentDir, VendorDependencies: true})
+	// Two independent resolutions (different wall clocks, fresh locks)...
+	first, err := packageWith(t, PackageConfig{ChartDir: depFixture(t, ""), VendorDependencies: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := packageWith(t, PackageConfig{ChartDir: parentDir, VendorDependencies: true})
+	time.Sleep(1100 * time.Millisecond)
+
+	second, err := packageWith(t, PackageConfig{ChartDir: depFixture(t, ""), VendorDependencies: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +214,23 @@ func TestPackageDependencyDeterministic(t *testing.T) {
 	n2, _ := NormalizeTgz(second)
 
 	if !bytes.Equal(n1, n2) {
-		t.Fatal("packaging twice produced different normalized bytes")
+		t.Fatal("two resolutions produced different normalized bytes")
+	}
+
+	// ...and repeated packaging of one tree that already holds its
+	// dependencies (resolution skipped).
+	dir := depFixture(t, "")
+	if _, err := packageWith(t, PackageConfig{ChartDir: dir, VendorDependencies: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	a, _ := packageWith(t, PackageConfig{ChartDir: dir, VendorDependencies: true})
+	b, _ := packageWith(t, PackageConfig{ChartDir: dir, VendorDependencies: true})
+	na, _ := NormalizeTgz(a)
+	nb, _ := NormalizeTgz(b)
+
+	if !bytes.Equal(na, nb) {
+		t.Fatal("repeated packaging of a resolved tree differs")
 	}
 }
 
@@ -240,4 +258,125 @@ func TestRequireImageDigestsCoversDependencies(t *testing.T) {
 			t.Fatalf("want success, got %v", err)
 		}
 	})
+}
+
+// TestPackageCommittedDependenciesSkipResolution: a chart that commits its
+// dependency archive and Chart.lock packages byte-identically to a run with
+// resolution disabled, and never invokes `helm dependency`.
+func TestPackageCommittedDependenciesSkipResolution(t *testing.T) {
+	parentDir := depFixture(t, "")
+
+	// Produce the committed state: charts/lib-1.0.0.tgz + Chart.lock.
+	if _, err := packageWith(t, PackageConfig{ChartDir: parentDir, VendorDependencies: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	lockBefore, err := os.ReadFile(filepath.Join(parentDir, "Chart.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A `helm` that fails on any `dependency` call and logs every call.
+	realHelm, _ := exec.LookPath("helm")
+	stubDir := t.TempDir()
+	logPath := filepath.Join(stubDir, "calls.log")
+	script := "#!/bin/sh\necho \"$@\" >> '" + logPath + "'\n" +
+		"if [ \"$1\" = dependency ] || [ \"$1\" = dep ]; then echo 'helm dependency must not run' >&2; exit 1; fi\n" +
+		"exec '" + realHelm + "' \"$@\"\n"
+
+	if err := os.WriteFile(filepath.Join(stubDir, "helm"), []byte(script), 0o755); err != nil { //nolint:gosec // test stub
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	with, err := packageWith(t, PackageConfig{ChartDir: parentDir, VendorDependencies: true})
+	if err != nil {
+		t.Fatalf("Package with committed dependencies: %v", err)
+	}
+
+	without, err := packageWith(t, PackageConfig{ChartDir: parentDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nWith, _ := NormalizeTgz(with)
+	nWithout, _ := NormalizeTgz(without)
+
+	if !bytes.Equal(nWith, nWithout) {
+		t.Fatal("committed dependencies: bytes differ from a run with resolution disabled")
+	}
+
+	calls, _ := os.ReadFile(logPath)
+	if strings.Contains(string(calls), "dependency") {
+		t.Fatalf("helm dependency was invoked:\n%s", calls)
+	}
+
+	if !strings.Contains(string(calls), "package") {
+		t.Fatalf("stub helm never saw `package`: %q", calls)
+	}
+
+	lockAfter, _ := os.ReadFile(filepath.Join(parentDir, "Chart.lock"))
+	if !bytes.Equal(lockBefore, lockAfter) {
+		t.Fatal("committed Chart.lock was modified")
+	}
+
+	// The packaged lock is the committed one, not re-pinned.
+	if got := tarEntryContent(t, with, "parent/Chart.lock"); got != string(lockBefore) {
+		t.Fatalf("packaged Chart.lock differs from the committed one:\n%s", got)
+	}
+}
+
+func TestDependencyState(t *testing.T) {
+	dir := t.TempDir()
+
+	write := func(rel, content string) {
+		t.Helper()
+
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("Chart.yaml", `apiVersion: v2
+name: p
+version: 0.1.0
+dependencies:
+  - {name: exact, version: 1.2.3, repository: "oci://example.invalid/c"}
+  - {name: wrongver, version: 2.0.0, repository: "oci://example.invalid/c"}
+  - {name: ranged, version: "~1.2", repository: "oci://example.invalid/c"}
+  - {name: expanded, version: 3.0.0, repository: "file://../expanded"}
+  - {name: absent, version: 1.0.0, repository: "oci://example.invalid/c"}
+`)
+	write("charts/exact-1.2.3.tgz", "x")
+	write("charts/wrongver-1.0.0.tgz", "x")
+	write("charts/ranged-1.2.9.tgz", "x")
+	write("charts/expanded/Chart.yaml", "apiVersion: v2\nname: expanded\nversion: 3.0.0\n")
+
+	declared, missing, err := dependencyState(dir)
+	if err != nil || !declared {
+		t.Fatalf("declared=%v err=%v", declared, err)
+	}
+
+	if strings.Join(missing, ",") != "wrongver,absent" {
+		t.Fatalf("missing = %v, want [wrongver absent]", missing)
+	}
+}
+
+func TestRequireImageDigestsLibraryWithoutImagesPasses(t *testing.T) {
+	parentDir := depFixture(t, "")
+
+	if err := os.WriteFile(filepath.Join(parentDir, "values.yaml"),
+		[]byte("images:\n  app:\n    repository: example/app\n    digest: sha256:abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := packageWith(t, PackageConfig{ChartDir: parentDir, VendorDependencies: true, RequireImageDigests: true}); err != nil {
+		t.Fatalf("a library chart with no images must pass: %v", err)
+	}
 }
