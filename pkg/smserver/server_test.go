@@ -465,9 +465,13 @@ func TestKeepsOnlyMapFiles(t *testing.T) {
 		t.Fatalf("map: %d", code)
 	}
 
-	if _, err := os.Stat(filepath.Join(e.cache, "entries", "web", "1.0.0", "dir", "a.js")); err == nil {
-		t.Fatal("non-.map file was unpacked")
-	}
+	_ = filepath.WalkDir(e.cache, func(p string, _ os.DirEntry, _ error) error {
+		if filepath.Base(p) == "a.js" {
+			t.Errorf("non-.map file was unpacked: %s", p)
+		}
+
+		return nil
+	})
 }
 
 func TestBlobDigestIsVerified(t *testing.T) {
@@ -570,8 +574,8 @@ func TestLRUEvictsWholeReleases(t *testing.T) {
 		t.Fatalf("stats %+v", s)
 	}
 
-	if _, err := os.Stat(filepath.Join(e.cache, "entries", "web", "1.0.0")); err == nil {
-		t.Fatal("evicted release still on disk")
+	if entries, _ := os.ReadDir(filepath.Join(e.cache, "entries")); len(entries) != 1 {
+		t.Fatalf("%d releases on disk after eviction, want 1", len(entries))
 	}
 
 	// The evicted release comes back on demand.

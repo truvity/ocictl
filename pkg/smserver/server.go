@@ -11,7 +11,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/opencontainers/go-digest"
@@ -55,6 +57,7 @@ type Server struct {
 	neg     *negativeCache
 	flights singleflight.Group
 	metrics metrics
+	seq     atomic.Uint64
 	staging string
 	entries string
 }
@@ -422,18 +425,9 @@ func (s *Server) pull(ctx context.Context, k key) (string, error) {
 		return "", refuse("unpacked size %d exceeds the cache size %d", size, s.cache.max)
 	}
 
-	final, err := s.entryDir(k)
-	if err != nil {
-		return "", err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
-		return "", err
-	}
-
-	if err := os.RemoveAll(final); err != nil {
-		return "", err
-	}
+	// The directory name is a counter, never anything from the request: no
+	// request-derived value is ever part of a path this server creates.
+	final := filepath.Join(s.entries, strconv.FormatUint(s.seq.Add(1), 10))
 
 	if err := os.Rename(stage, final); err != nil {
 		return "", err
@@ -444,19 +438,6 @@ func (s *Server) pull(ctx context.Context, k key) (string, error) {
 	}
 
 	return final, nil
-}
-
-// entryDir is where k lives on disk. Both segments were validated earlier
-// (a configured app name, a sanitised tag); this refuses anything that is not
-// a single plain path element anyway, so the join cannot leave entries.
-func (s *Server) entryDir(k key) (string, error) {
-	for _, seg := range []string{k.app, k.tag} {
-		if seg == "" || seg == "." || seg == ".." || seg != filepath.Base(seg) || strings.ContainsAny(seg, "/\\") {
-			return "", fmt.Errorf("unsafe cache path element %q", seg)
-		}
-	}
-
-	return filepath.Join(s.entries, filepath.Base(k.app), filepath.Base(k.tag)), nil
 }
 
 // logSafe strips line breaks from a value that came from a request.
