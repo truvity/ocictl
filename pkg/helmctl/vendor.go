@@ -19,23 +19,66 @@ import (
 // the one non-deterministic field helm writes into the lock.
 var chartLockGeneratedRe = regexp.MustCompile(`(?m)^generated:.*$`)
 
-// hasDependencies reports whether the chart declares a dependencies block.
-func hasDependencies(chartDir string) (bool, error) {
+// dependencyState inspects the chart's declared dependencies against what is
+// already under charts/. It reports whether any are declared and which are
+// missing: a dependency is present when charts/<name>-<version>.tgz exists
+// or charts/<name>/Chart.yaml carries that version. A version constraint that
+// is not a plain version (a range such as "~1.2" or "^1") cannot be matched
+// by name, so any archive or directory for the chart counts as present.
+// Every declared dependency is required, `condition:` or not — `helm package`
+// itself refuses a chart with any declared dependency absent from charts/.
+func dependencyState(chartDir string) (declared bool, missing []string, err error) {
 	data, err := os.ReadFile(filepath.Join(chartDir, "Chart.yaml")) //nolint:gosec // caller-config path
 	if err != nil {
-		return false, fmt.Errorf("read Chart.yaml: %w", err)
+		return false, nil, fmt.Errorf("read Chart.yaml: %w", err)
 	}
 
 	var meta struct {
 		Dependencies []struct {
-			Name string `yaml:"name"`
+			Name    string `yaml:"name"`
+			Version string `yaml:"version"`
 		} `yaml:"dependencies"`
 	}
 	if err := yaml.Unmarshal(data, &meta); err != nil {
-		return false, fmt.Errorf("parse Chart.yaml: %w", err)
+		return false, nil, fmt.Errorf("parse Chart.yaml: %w", err)
 	}
 
-	return len(meta.Dependencies) > 0, nil
+	for _, d := range meta.Dependencies {
+		if !dependencyPresent(chartDir, d.Name, d.Version) {
+			missing = append(missing, d.Name)
+		}
+	}
+
+	return len(meta.Dependencies) > 0, missing, nil
+}
+
+var plainVersionRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.+-]*)?$`)
+
+func dependencyPresent(chartDir, name, version string) bool {
+	plain := plainVersionRe.MatchString(version)
+
+	if plain {
+		if _, err := os.Stat(filepath.Join(chartDir, "charts", name+"-"+version+".tgz")); err == nil {
+			return true
+		}
+	} else if m, _ := filepath.Glob(filepath.Join(chartDir, "charts", name+"-*.tgz")); len(m) > 0 {
+		return true
+	}
+
+	meta, err := os.ReadFile(filepath.Join(chartDir, "charts", name, "Chart.yaml")) //nolint:gosec // caller-config path
+	if err != nil {
+		return false
+	}
+
+	if !plain {
+		return true
+	}
+
+	var c struct {
+		Version string `yaml:"version"`
+	}
+
+	return yaml.Unmarshal(meta, &c) == nil && c.Version == version
 }
 
 // vendorDependencies runs `helm dependency build` against the SOURCE chart
@@ -44,6 +87,11 @@ func hasDependencies(chartDir string) (bool, error) {
 // (the monorepo pattern — e.g. a service chart depending on a library chart
 // in the same tree and released under the same tag) only resolves from the
 // chart's real location.
+//
+// It runs only when a declared dependency is missing from charts/ (see
+// dependencyState): a chart that commits its dependency archives and
+// Chart.lock — reviewed bytes, no network at release time — is packaged
+// exactly as it always was.
 //
 // `build` — not `update` — is deliberate: it honours a committed Chart.lock
 // (fetching exactly the locked versions, so the dependency set is reviewed

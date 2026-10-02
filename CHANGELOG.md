@@ -7,16 +7,17 @@ Release notes for earlier versions are generated from commit history on the
 
 ### Added
 
-- **`helmctl package` resolves chart dependencies.** A chart whose `Chart.yaml`
-  declares `dependencies:` (a `file://` library in the same repository, `oci://`
-  or `https://`) now has them resolved with `helm dependency build` before
-  packaging, so it no longer needs a vendored copy of its library chart. A
-  committed `Chart.lock` is honoured and a stale one is refused with a clear
-  message; an unresolvable dependency fails the command. Dependency archives
-  are normalised and `Chart.lock`'s timestamp pinned, so the output stays
-  reproducible, and `--require-image-digests` now also checks the
-  dependencies' `images:`. Charts without dependencies package exactly as
-  before. See `docs/goreleaser.md`.
+- **`helmctl package` resolves chart dependencies that are missing.** A chart
+  whose `Chart.yaml` `dependencies:` are not all present in `charts/`
+  (`file://` library in the same repository, `oci://` or `https://`) has them
+  resolved with `helm dependency build` before packaging, so it no longer needs
+  a vendored copy of its library chart. A committed `Chart.lock` is honoured
+  and a stale one refused with a clear message. When every dependency is
+  already present (committed archives plus `Chart.lock`), nothing changes: no
+  helm dependency step, no network, the same bytes. Resolved archives are
+  normalised and `Chart.lock`'s timestamp pinned, so output stays reproducible.
+  `--require-image-digests` now also checks the dependencies' `images:`.
+  See `docs/goreleaser.md`.
 
 ## v0.7.1
 

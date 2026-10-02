@@ -31,9 +31,9 @@ helmctl push --tgz dist/myproject/charts/myproject-1.2.3.tgz \
 
 ## Chart dependencies
 
-`helmctl package` resolves `Chart.yaml` `dependencies:` before packaging
-(the equivalent of `helm dependency build`), so a chart can depend on a
-library chart without vendoring a copy of it:
+`helmctl package` can resolve `Chart.yaml` `dependencies:` (the equivalent of
+`helm dependency build`), so a chart can depend on a library chart without
+vendoring a copy of it:
 
 ```yaml
 dependencies:
@@ -43,25 +43,37 @@ dependencies:
   # or: repository: oci://ghcr.io/example/charts
 ```
 
-- `file://` repositories resolve relative to the chart directory; `oci://`
-  and `https://` repositories are fetched by `helm`. A library in the same
+**The rule: dependencies are resolved only when one is missing.** A declared
+dependency counts as present when `charts/<name>-<version>.tgz` exists or
+`charts/<name>/Chart.yaml` carries that version (a range such as `~1.2` is
+satisfied by any archive or directory for that chart). When every declared
+dependency is present — a chart that commits its archives and `Chart.lock`,
+for reviewed bytes and no network at release time — packaging is exactly what
+it always was: no `helm dependency` step, no network, the same bytes. Only a
+missing dependency triggers resolution.
+
+When resolution runs:
+
+- `file://` repositories resolve relative to the chart directory; `oci://` and
+  `https://` repositories are fetched by `helm`. A library in the same
   repository is released under the same tag as the chart that uses it.
 - A committed `Chart.lock` is honoured: exactly the locked versions are
   fetched. A lock that no longer matches `dependencies:` is refused with a
   message naming the fix (`helm dependency update`, commit the new lock).
-  With no lock, one is written. An unresolvable dependency fails the
-  package step.
-- Resolution runs in the source chart directory (a `file://` path only makes
-  sense there), so `charts/*.tgz` appears there; gitignore it. A chart with
-  no `dependencies:` is packaged exactly as before.
+  With no lock, one is written. An unresolvable dependency fails the command.
+- It runs in the source chart directory (a `file://` path only makes sense
+  there), so `charts/*.tgz` appears there; gitignore it.
 - Determinism: the packaged copy's `Chart.lock` has its `generated:` time
   pinned and embedded dependency archives are normalised; `helmctl push`
   normalises the final layer, so the OCI digest depends only on content.
-- `--require-image-digests` also covers dependencies: a dependency's own
-  `images:` defaults, overridden by what the parent sets under the
-  dependency's name (or `alias`), must carry digests. A manifest overlay is
-  still applied to the parent chart's `images:` only.
 - `helm` must be on `PATH` (as it already is for `package`).
+
+`--require-image-digests`, and only it, also covers dependencies (resolved or
+committed, archive or directory): a dependency's own `images:` defaults,
+overridden by what the parent sets under the dependency's name (or `alias`),
+must carry digests. A library chart with no `images:` passes. Every declared
+dependency is checked, `condition:` or not. A manifest overlay is still
+applied to the parent chart's `images:` only.
 
 Because the two `helmctl` steps only read files from `dist/`, ordering is
 trivially safe **within one job**: once the `goreleaser` process has

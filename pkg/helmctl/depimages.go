@@ -49,7 +49,12 @@ func requireDependencyImageDigests(chartTmp string) error {
 		return fmt.Errorf("list dependency archives: %w", err)
 	}
 
-	if len(archives) == 0 {
+	dirs, err := filepath.Glob(filepath.Join(chartTmp, "charts", "*", "Chart.yaml"))
+	if err != nil {
+		return fmt.Errorf("list dependency directories: %w", err)
+	}
+
+	if len(archives) == 0 && len(dirs) == 0 {
 		return nil
 	}
 
@@ -74,6 +79,15 @@ func requireDependencyImageDigests(chartTmp string) error {
 		c, err := loadDepChart(data)
 		if err != nil {
 			return fmt.Errorf("read dependency %s: %w", filepath.Base(a), err)
+		}
+
+		byName[c.name] = c
+	}
+
+	for _, d := range dirs {
+		c, err := loadDepDir(filepath.Dir(d))
+		if err != nil {
+			return fmt.Errorf("read dependency %s: %w", filepath.Base(filepath.Dir(d)), err)
 		}
 
 		byName[c.name] = c
@@ -305,4 +319,37 @@ func buildDepChart(entries map[string][]byte, prefix string) (*depChart, error) 
 	}
 
 	return c, nil
+}
+
+// loadDepDir reads an expanded dependency chart directory the same way
+// loadDepChart reads an archive.
+func loadDepDir(dir string) (*depChart, error) {
+	root := filepath.Base(dir) + "/"
+	entries := map[string][]byte{}
+
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+
+		base := d.Name()
+		if base != "Chart.yaml" && base != "values.yaml" && filepath.Ext(base) != ".tgz" {
+			return nil
+		}
+
+		data, err := os.ReadFile(p) //nolint:gosec // under the temp copy
+		if err != nil {
+			return err
+		}
+
+		rel, _ := filepath.Rel(dir, p)
+		entries[root+filepath.ToSlash(rel)] = data
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return buildDepChart(entries, root)
 }
