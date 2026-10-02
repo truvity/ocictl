@@ -88,7 +88,7 @@ check: build test lint chart-lint leak-canary
 
 # Build a snapshot release locally (no push, no tag)
 snapshot:
-    goreleaser release --snapshot --clean
+    KO_DOCKER_REPO=ghcr.io/truvity/ocictl/smctl goreleaser release --snapshot --clean
 
 # --- CRD chart operations ---
 

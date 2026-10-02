@@ -49,6 +49,41 @@ exited, `artifacts.json` and `metadata.json` are complete.
 > the images are pushed, and the ordering cannot be got wrong.
 > `--require-image-digests` is the belt to that braces.
 
+## Source maps in the same job
+
+The same pattern carries a frontend's source maps (full guide:
+[docs/sourcemaps.md](sourcemaps.md)). GoReleaser builds the SPA **once**, the
+image copies the built `dist/`, the maps are moved out so they never reach the
+image, and `smctl push` publishes them right after `goreleaser release`:
+
+```yaml
+# .goreleaser.yaml
+before:
+  hooks:
+    # Build the SPA once. Keep GoReleaser's own dist/ out of the way:
+    # the SPA builds into web/dist.
+    - yarn --cwd web build
+    # Move every .map out of the tree the image copies (rsync keeps the layout).
+    - rm -rf dist-sourcemaps
+    - >-
+      rsync -a --prune-empty-dirs --remove-source-files
+      --include='*/' --include='*.map' --exclude='*'
+      web/dist/ dist-sourcemaps/
+```
+
+```bash
+# the release job, in this order
+goreleaser release --clean
+smctl push --goreleaser-dist dist --image web --maps dist-sourcemaps
+```
+
+Build the SPA with maps that do not advertise themselves (`sourcemap:
+'hidden'` in Vite, `devtool: 'hidden-source-map'` in webpack), so the shipped
+JavaScript carries no `sourceMappingURL` comment. The image tag, the Faro
+`app.release` and the map tag must all be the release version; `smctl push`
+takes it from `dist/metadata.json`. `smctl` is wired into a consuming repository
+the same way as `helmctl` ([docs/consuming.md](consuming.md)).
+
 ## What `goreleaser-manifest` reads
 
 | File | Used for |

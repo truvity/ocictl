@@ -31,6 +31,20 @@ builds:
     ldflags:
       - -s -w -X main.Version={{.Version}}
 
+  - id: smctl
+    main: ./cmd/smctl
+    binary: smctl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
 archives:
   - id: helmctl
     ids:
@@ -43,6 +57,33 @@ archives:
       - crdctl
     formats: [tar.gz]
     name_template: "crdctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: smctl
+    ids:
+      - smctl
+    formats: [tar.gz]
+    name_template: "smctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+# The `smctl serve` image. KO_DOCKER_REPO (set by release.yaml) is the whole
+# destination, ghcr.io/truvity/ocictl/smctl; `bare` publishes to exactly it.
+kos:
+  - id: smctl
+    build: smctl
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: smctl
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/ocictl
 
 release:
   github:
@@ -57,7 +98,12 @@ release:
     # Via go run (no install needed):
     go run github.com/truvity/ocictl/cmd/helmctl@{{ .Tag }} --help
     go run github.com/truvity/ocictl/cmd/crdctl@{{ .Tag }} --help
+    go run github.com/truvity/ocictl/cmd/smctl@{{ .Tag }} --help
     ```
+
+    ### Source-map service image
+
+    `ghcr.io/truvity/ocictl/smctl:{{ .Version }}` — `smctl serve`, see docs/sourcemaps.md.
 
 changelog:
   use: github
