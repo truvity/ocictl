@@ -97,16 +97,16 @@ smctl serve --config /etc/smctl/config.yaml
 
 ```bash
 # Package a chart (the source is only touched to drop dependency build artifacts)
-helmctl package --chart charts/cilium-crds --version 1.19.5 --output dist/
+helmctl package --chart charts/my-crds --version 1.19.5 --output dist/
 
 # Chart.yaml `dependencies:` (file:// library in the same repo, oci://, https://)
 # are resolved only when one is missing from charts/ (honouring Chart.lock);
 # committed archives are packaged as-is, no network — see docs/goreleaser.md
 
 # Push to GHCR
-helmctl push --tgz dist/cilium-crds-1.19.5.tgz \
-  --registry ghcr.io --repository truvity/charts/cilium-crds \
-  --version 1.19.5 --name cilium-crds
+helmctl push --tgz dist/my-crds-1.19.5.tgz \
+  --registry ghcr.io --repository truvity/charts/my-crds \
+  --version 1.19.5 --name my-crds
 
 # Push to ECR (private)
 helmctl push --tgz dist/my-chart-1.0.0.tgz \
@@ -120,11 +120,11 @@ helmctl push --tgz dist/my-chart-1.0.0.tgz \
 
 ```bash
 # Fetch CRDs from GitHub and generate chart templates/ (no push)
-crdctl build --config charts/cilium-crds/crdctl.yaml
+crdctl build --config charts/<name>/crdctl.yaml
 
 # Full pipeline: fetch + package + push to GHCR
-crdctl publish --config charts/cilium-crds/crdctl.yaml \
-  --registry ghcr.io --repository truvity/charts/cilium-crds
+crdctl publish --config charts/<name>/crdctl.yaml \
+  --registry ghcr.io --repository truvity/charts/my-crds
 ```
 
 ## Consumers
@@ -134,7 +134,6 @@ Who uses ocictl, and through which surface:
 | Consumer                  | Surface                      |
 | -------------------------- | ------------------------------ |
 | truvity/gemaal            | `go tool helmctl`            |
-| A second, non-AWS estate  | `cilium-crds` chart          |
 | developer machines        | `go run …@vX` (this README)  |
 
 ## Neighbours
@@ -168,15 +167,12 @@ unpublished once a particular has landed in it.
 
 - Latest release: **v0.6.2** (2026-09-29) — see the
   [releases page](https://github.com/truvity/ocictl/releases) for every tag.
-- Published to GHCR at `ghcr.io/truvity/charts/{name}:{version}`:
-
-| Chart                | Upstream                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------- |
-| cilium-crds           | [cilium/cilium](https://github.com/cilium/cilium)                                             |
-| barman-cloud-crds     | [cloudnative-pg/plugin-barman-cloud](https://github.com/cloudnative-pg/plugin-barman-cloud)   |
-| volume-snapshot-crds  | [kubernetes-csi/external-snapshotter](https://github.com/kubernetes-csi/external-snapshotter) |
-
-Versions are pinned in each chart's own `crdctl.yaml`.
+- The CRD charts (`barman-cloud-crds`, `volume-snapshot-crds`, `cilium-crds`)
+  are no longer built here: they moved to the repositories that own what they
+  extend ([truvity/cnpg](https://github.com/truvity/cnpg),
+  [truvity/k8s](https://github.com/truvity/k8s)), which run `crdctl` from a
+  pinned release of this one. The versions already published at
+  `ghcr.io/truvity/charts/<name>` stay where they are.
 
 ## Development
 
@@ -184,14 +180,8 @@ Versions are pinned in each chart's own `crdctl.yaml`.
 # Enter dev environment
 devbox shell
 
-# Run all checks (build + test + lint + chart-lint + vuln + leak-canary)
+# Run all checks (build + test + lint + leak-canary)
 just check
-
-# Build all CRD charts locally
-just crd-build-all
-
-# Publish all CRD charts to GHCR
-just crd-publish-all
 ```
 
 ## Releasing
@@ -204,9 +194,6 @@ just crd-publish-all
   moved `master` past the latest release — weekly, or immediately for a push
   whose merged PR carries the `security` label. Off by default, gated on
   `vars.AUTO_RELEASE` and `vars.ACCESS_ROSTER_ISSUER`.
-- [`.github/workflows/publish-charts.yaml`](.github/workflows/publish-charts.yaml)
-  republishes a CRD chart to GHCR whenever its `crdctl.yaml` changes on
-  `master`.
 
 ## Licence
 
