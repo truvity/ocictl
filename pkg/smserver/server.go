@@ -165,7 +165,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.metrics.request(rec.code)
 	s.log.InfoContext(r.Context(), "request",
-		slog.String("method", r.Method), slog.String("app", app), slog.String("release", release),
+		slog.String("method", r.Method), slog.String("app", logSafe(app)), slog.String("release", logSafe(release)),
 		slog.Int("status", rec.code), slog.String("outcome", outcome), slog.Duration("took", s.clock().Sub(start)))
 }
 
@@ -262,20 +262,20 @@ func (s *Server) fail(ctx context.Context, w http.ResponseWriter, k key, err err
 		// miss, remembered like one, but loud enough to notice a bad login.
 		s.metrics.denied.Add(1)
 		s.neg.add(k)
-		s.log.WarnContext(ctx, "registry denied access", slog.String("app", k.app), slog.String("release", k.tag), slog.Any("error", err))
+		s.log.WarnContext(ctx, "registry denied access", slog.String("app", logSafe(k.app)), slog.String("release", logSafe(k.tag)), slog.Any("error", err))
 		http.Error(w, "not found", http.StatusNotFound)
 
 		return "denied"
 	case errors.As(err, &refused):
 		s.metrics.refusals.Add(1)
 		s.neg.add(k)
-		s.log.WarnContext(ctx, "artifact refused", slog.String("app", k.app), slog.String("release", k.tag), slog.String("reason", refused.reason))
+		s.log.WarnContext(ctx, "artifact refused", slog.String("app", logSafe(k.app)), slog.String("release", logSafe(k.tag)), slog.String("reason", refused.reason))
 		http.Error(w, "not found", http.StatusNotFound)
 
 		return "refused"
 	default:
 		s.metrics.failures.Add(1)
-		s.log.ErrorContext(ctx, "registry failure", slog.String("app", k.app), slog.String("release", k.tag), slog.Any("error", err))
+		s.log.ErrorContext(ctx, "registry failure", slog.String("app", logSafe(k.app)), slog.String("release", logSafe(k.tag)), slog.Any("error", err))
 		http.Error(w, "registry unavailable", http.StatusBadGateway)
 
 		return "registry-error"
@@ -422,7 +422,11 @@ func (s *Server) pull(ctx context.Context, k key) (string, error) {
 		return "", refuse("unpacked size %d exceeds the cache size %d", size, s.cache.max)
 	}
 
-	final := filepath.Join(s.entries, k.app, k.tag)
+	final, err := s.entryDir(k)
+	if err != nil {
+		return "", err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
 		return "", err
 	}
@@ -440,6 +444,24 @@ func (s *Server) pull(ctx context.Context, k key) (string, error) {
 	}
 
 	return final, nil
+}
+
+// entryDir is where k lives on disk. Both segments were validated earlier
+// (a configured app name, a sanitised tag); this refuses anything that is not
+// a single plain path element anyway, so the join cannot leave entries.
+func (s *Server) entryDir(k key) (string, error) {
+	for _, seg := range []string{k.app, k.tag} {
+		if seg == "" || seg == "." || seg == ".." || seg != filepath.Base(seg) || strings.ContainsAny(seg, "/\\") {
+			return "", fmt.Errorf("unsafe cache path element %q", seg)
+		}
+	}
+
+	return filepath.Join(s.entries, filepath.Base(k.app), filepath.Base(k.tag)), nil
+}
+
+// logSafe strips line breaks from a value that came from a request.
+func logSafe(v string) string {
+	return strings.NewReplacer("\n", "", "\r", "").Replace(v)
 }
 
 // unpackVerified unpacks into stage and only then checks the blob digest, so
