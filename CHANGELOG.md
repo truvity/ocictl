@@ -3,7 +3,7 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
-## Unreleased
+## v0.8.0
 
 ### Added
 
