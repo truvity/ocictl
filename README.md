@@ -12,13 +12,14 @@ Deterministic OCI chart packaging and CRD repack tooling.
 
 Anyone who needs to turn a build into a **digest-pinned, immutable** Helm
 chart and push it to an OCI registry (GHCR or a private ECR), or who needs
-to repack a third party's CRDs into a chart. Two binaries; `ocictl` is the
+to repack a third party's CRDs into a chart. Three binaries; `ocictl` is the
 repository name, never a command:
 
 | Binary      | Purpose                                                    |
 | ----------- | ---------------------------------------------------------- |
 | **helmctl** | Deterministic Helm chart packaging + OCI push (GHCR + ECR) |
 | **crdctl**  | Fetch upstream CRDs → generate chart → package → push      |
+| **smctl**   | Source maps as OCI artifacts: push after a release, serve to Alloy |
 
 AI agents: start with **[AGENTS.md](AGENTS.md)** — the exhaustive command
 surface and the rule for not inventing one.
@@ -36,6 +37,8 @@ Two independent pipelines that share one deterministic push primitive:
 | [`pkg/ocipush`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/ocipush)               | Deterministic OCI artifact push via ORAS (not `helm push`) — GHCR + ECR auth              |
 | [`pkg/helmctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/helmctl)               | Helm chart packaging: version + values injection, release manifests, deterministic push   |
 | [`pkg/goreleaserdist`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/goreleaserdist) | Parse a GoReleaser `dist/` (images + index digests + version) into a release manifest     |
+| [`pkg/sourcemaps`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/sourcemaps)         | Source-map OCI artifact: deterministic packing, version-tag sanitising, push             |
+| [`pkg/smserver`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/smserver)             | HTTP service answering Alloy `faro.receiver` source-map lookups from those artifacts      |
 | [`pkg/crdctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/crdctl)                 | CRD fetch from GitHub + chart generation + publish pipeline                               |
 
 Determinism is the point of the push primitive, not an add-on:
@@ -73,6 +76,21 @@ goreleaser release --clean
 helmctl goreleaser-manifest --goreleaser-dist dist/myproject -o dist/myproject/chart-manifest.yaml
 helmctl package --chart charts/myproject --manifest dist/myproject/chart-manifest.yaml \
   --require-image-digests --output dist/myproject/charts/
+```
+
+### smctl: source maps as OCI artifacts
+
+`smctl push` packs a build's `.map` files into a deterministic artifact tagged
+with the release version, pushed to ghcr or ECR right after `goreleaser release`;
+`smctl serve` answers Grafana Alloy's `faro.receiver` lookups
+(`GET /<app>/<release>/<path>.map`) by pulling that artifact on demand into a
+bounded cache. The service image is `ghcr.io/truvity/ocictl/smctl`. See
+**[docs/sourcemaps.md](docs/sourcemaps.md)**:
+
+```bash
+goreleaser release --clean
+smctl push --goreleaser-dist dist --image web --maps dist-sourcemaps
+smctl serve --config /etc/smctl/config.yaml
 ```
 
 ### helmctl
@@ -124,6 +142,7 @@ Who uses ocictl, and through which surface:
 - [AGENTS.md](AGENTS.md) — the exhaustive command surface, for agents and humans alike
 - [docs/consuming.md](docs/consuming.md) — pinning and wiring ocictl's
   tools from another repository
+- [docs/sourcemaps.md](docs/sourcemaps.md) — source maps as OCI artifacts: publish, serve, security model
 - [docs/goreleaser.md](docs/goreleaser.md) — the helmctl + GoReleaser pipeline in full
 - [CHANGELOG.md](CHANGELOG.md) — release notes
 - The component contract every chart here is held to lives in

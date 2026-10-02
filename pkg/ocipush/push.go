@@ -42,9 +42,24 @@ type (
 		ConfigMediaType string
 		// Tag is the OCI tag to push (e.g., "1.7.0").
 		Tag string
+		// ArtifactType is the optional OCI 1.1 manifest artifactType
+		// (e.g. "application/vnd.ocictl.sourcemaps.v1"). Empty omits it.
+		ArtifactType string
 		// Annotations are optional manifest-level annotations.
 		// org.opencontainers.image.created is always stripped for determinism.
 		Annotations map[string]string
+	}
+
+	// Options tunes Push beyond the defaults. The zero value is what Push uses.
+	Options struct {
+		// AWSProfile is exported as AWS_PROFILE for the ECR credential helper.
+		AWSProfile string
+		// PlainHTTP talks HTTP instead of HTTPS (tests against a local fake
+		// registry; never for a real registry).
+		PlainHTTP bool
+		// Credential, when set, replaces the registry-based credential
+		// selection (ghcr token / docker credential store).
+		Credential func(ctx context.Context, hostport string) (auth.Credential, error)
 	}
 
 	// PushResult contains the outcome of a successful push.
@@ -65,6 +80,17 @@ func Push(
 	repoRef string,
 	artifact Artifact,
 	awsProfile string,
+) (*PushResult, error) {
+	return PushWithOptions(ctx, logger, repoRef, artifact, Options{AWSProfile: awsProfile})
+}
+
+// PushWithOptions is Push with explicit Options.
+func PushWithOptions(
+	ctx context.Context,
+	logger *slog.Logger,
+	repoRef string,
+	artifact Artifact,
+	opts Options,
 ) (*PushResult, error) {
 	store := memory.New()
 
@@ -102,9 +128,14 @@ func Push(
 		return nil, fmt.Errorf("create remote repo %q: %w", repoRef, err)
 	}
 
-	repo.Client = &auth.Client{
-		Credential: resolveCredentials(repoRef, awsProfile),
+	repo.PlainHTTP = opts.PlainHTTP
+
+	credential := opts.Credential
+	if credential == nil {
+		credential = resolveCredentials(repoRef, opts.AWSProfile)
 	}
+
+	repo.Client = &auth.Client{Credential: credential}
 
 	// Copy from memory store to remote.
 	_, err = oras.Copy(ctx, store, artifact.Tag, repo, artifact.Tag, oras.DefaultCopyOptions)
@@ -130,6 +161,8 @@ func BuildManifest(artifact Artifact) ([]byte, error) {
 		Versioned: specs.Versioned{SchemaVersion: 2},
 		Config:    configDesc,
 		Layers:    []ocispec.Descriptor{layerDesc},
+
+		ArtifactType: artifact.ArtifactType,
 	}
 
 	if len(artifact.Annotations) > 0 {

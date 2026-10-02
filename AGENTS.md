@@ -5,12 +5,13 @@ repo that consumes it. Human-readable too — nothing here is agent-only.
 
 ## What this repo ships
 
-Two binaries. `ocictl` is the **repository** name, never a command:
+Three binaries. `ocictl` is the **repository** name, never a command:
 
 | Command | Does |
 | --- | --- |
 | `helmctl` | deterministic Helm chart packaging + OCI push |
 | `crdctl`  | fetch upstream CRDs → generate chart → package → push |
+| `smctl`   | source maps as OCI artifacts: `push` after a release, `serve` to Grafana Alloy |
 
 Writing `ocictl helmctl …` in a shell fails with `ocictl: command not found`.
 In prose, some repos use "ocictl helmctl" to mean "helmctl, from ocictl" —
@@ -31,7 +32,18 @@ helmctl push     --tgz <file> --registry <url> --repository <path>
 Note `push` takes **no positional project argument**. `helmctl push myproject`
 is not a shorter form of anything; it fails on missing required flags.
 
-Source of truth: [`cmd/helmctl/main.go`](cmd/helmctl/main.go). If this file and
+`smctl` has two subcommands and nothing else
+([docs/sourcemaps.md](docs/sourcemaps.md)):
+
+```
+smctl push  --maps <dir> [--include <pattern>...] [--dry-run] [--profile <aws>]
+            ( --goreleaser-dist <dir> --image <name> [--app <name>] [--repository-template <tpl>]
+            | --repository <host/path> )  [--version <ver>]
+smctl serve --config <file>
+```
+
+Source of truth: [`cmd/helmctl/main.go`](cmd/helmctl/main.go) and
+[`cmd/smctl/main.go`](cmd/smctl/main.go). If this file and
 that file disagree, that file is right and this one is a bug — fix it.
 
 ## If you are about to write a command into documentation

@@ -3,6 +3,22 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.7.0
+
+### Added
+
+- **`smctl`: source maps as OCI artifacts.** `smctl push` packs the `.map` files
+  of a frontend build into a deterministic artifact (`artifactType
+  application/vnd.ocictl.sourcemaps.v1`, one tar.gz layer) tagged with the
+  release version and pushes it to ghcr or ECR after `goreleaser release`;
+  `smctl serve` answers Grafana Alloy `faro.receiver` source-map lookups from
+  those artifacts, with a size-capped LRU cache, safe unpacking and ECR,
+  docker-config or anonymous registry auth. See `docs/sourcemaps.md`.
+- The `smctl serve` image is published as `ghcr.io/truvity/ocictl/smctl:<version>`
+  (linux/amd64 and linux/arm64, distroless static, nonroot) with each release.
+- `pkg/ocipush`: `Artifact.ArtifactType` and `PushWithOptions` (plain HTTP and
+  an explicit credential function). `Push` is unchanged.
+
 ## v0.6.2
 
 - Leak hygiene: the real ECR host is gone from README, docs and code comments; `hack/leak-canary.sh` runs in `just check`.
