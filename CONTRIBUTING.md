@@ -20,10 +20,7 @@ cannot be edited after the push.
 - `build` compiles the two commands
 - `test` runs the unit tests
 - `lint` runs golangci-lint (after `config verify`) and govulncheck
-- `chart-lint` builds every CRD chart, checks it against its golden under `tests/golden/` and proves every refusal fixture fails
 - `leak-canary`
-
-A change to a CRD chart regenerates its golden render with `just golden`; review that diff in the pull request.
 
 ## Component contract
 

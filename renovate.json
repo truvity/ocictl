@@ -1,15 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>truvity/ci-workflows"],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "The upstream pin each CRD chart's crdctl.yaml carries (repo + pinned_version): the version crdctl fetches CRDs from and packages the chart as, independent of this repository's own tag.",
-      "fileMatch": ["charts/.*/crdctl\\.yaml$"],
-      "matchStrings": [
-        "repo: (?<packageName>[^\\n]+)\\npinned_version: \"(?<currentValue>[^\"]+)\""
-      ],
-      "datasourceTemplate": "github-releases"
-    }
+  "extends": [
+    "github>truvity/ci-workflows"
   ]
 }

@@ -21,6 +21,3 @@ vendor/
 
 # CRD cache
 .cache/
-
-# Generated chart templates (fetched by crdctl)
-charts/*/templates/
