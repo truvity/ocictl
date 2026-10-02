@@ -74,7 +74,7 @@ func main() {
 			},
 			{
 				Name:  "package",
-				Usage: "Package a chart with version + values injection (source is never modified)",
+				Usage: "Package a chart with version + values injection and resolved dependencies",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "chart", Usage: "Path to chart directory", Required: true},
 					&cli.StringFlag{Name: "version", Usage: "Version to inject (or use --manifest)"},
@@ -92,7 +92,10 @@ func main() {
 						Version:             cmd.String("version"),
 						AppVersion:          cmd.String("app-version"),
 						RequireImageDigests: cmd.Bool("require-image-digests"),
-						OutputDir:           cmd.String("output"),
+						// Chart.yaml dependencies are always resolved; a chart
+						// without any behaves exactly as before.
+						VendorDependencies: true,
+						OutputDir:          cmd.String("output"),
 					}
 
 					if manifestPath := cmd.String("manifest"); manifestPath != "" {

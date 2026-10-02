@@ -33,16 +33,18 @@ type (
 		// the final values.yaml `images:` map carries a digest.
 		RequireImageDigests bool
 		// VendorDependencies resolves the chart's Chart.yaml dependencies
-		// before packaging (`helm package` never resolves them itself).
-		// `helm dependency update` runs against the SOURCE chart dir —
-		// file:// repositories resolve relative to the chart directory,
-		// so repo-internal deps only resolve from the chart's real
-		// location; the resulting charts/*.tgz and Chart.lock are build
-		// artifacts the owning repo should gitignore. In the packaged
-		// copy Chart.lock's generated timestamp is pinned so the parent
-		// chart's OCI digest stays content-derived (helm re-serializes
-		// dependency tarballs as expanded file trees, so they carry no
-		// wall-clock state). No-op for charts without dependencies.
+		// (`helm dependency build`) before packaging; `helm package` never
+		// resolves them itself. A committed Chart.lock is honoured and a
+		// stale one is refused; file:// (relative to the chart dir),
+		// oci:// and https repositories all work. It runs against the
+		// SOURCE chart dir — file:// repositories resolve relative to it —
+		// so the resulting charts/*.tgz (and Chart.lock, if none was
+		// committed) are build artifacts the owning repo should gitignore.
+		// In the packaged copy Chart.lock's generated timestamp is pinned
+		// and embedded dependency archives are normalised, so the parent
+		// chart's OCI digest stays content-derived. With RequireImageDigests
+		// the dependencies' own `images:` must carry digests too. No-op for
+		// charts without dependencies. The helmctl CLI always sets it.
 		VendorDependencies bool
 		// OutputDir is where the .tgz is written.
 		OutputDir string
@@ -64,6 +66,8 @@ type (
 // NEVER modified — except when VendorDependencies is set, which drops
 // gitignorable dependency artifacts there (see the field doc).
 func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*PackageResult, error) {
+	vendored := false
+
 	if cfg.VendorDependencies {
 		declares, err := hasDependencies(cfg.ChartDir)
 		if err != nil {
@@ -74,6 +78,8 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 			if err := vendorDependencies(ctx, logger, cfg.ChartDir); err != nil {
 				return nil, err
 			}
+
+			vendored = true
 		}
 	}
 
@@ -90,8 +96,12 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 		return nil, fmt.Errorf("copy chart: %w", err)
 	}
 
-	if cfg.VendorDependencies {
+	if vendored {
 		if err := pinChartLock(chartTmp); err != nil {
+			return nil, err
+		}
+
+		if err := normalizeVendoredDependencies(chartTmp); err != nil {
 			return nil, err
 		}
 	}
@@ -122,6 +132,12 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 	if cfg.RequireImageDigests {
 		if err := RequireImageDigests(chartTmp); err != nil {
 			return nil, err
+		}
+
+		if vendored {
+			if err := requireDependencyImageDigests(chartTmp); err != nil {
+				return nil, err
+			}
 		}
 	}
 
