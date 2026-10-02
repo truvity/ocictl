@@ -77,7 +77,6 @@ kos:
       - linux/arm64
     bare: true
     preserve_import_paths: false
-    base_import_paths: true
     base_image: gcr.io/distroless/static:nonroot
     sbom: none
     labels:

@@ -3,6 +3,10 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.7.1
+
+- **The `smctl` image is published at `ghcr.io/truvity/ocictl/smctl`.** v0.7.0 pushed it to `ghcr.io/truvity/ocictl/smctl/smctl`: `base_import_paths: true` made ko append the binary name to the repository even with `bare: true`. The option is removed; nothing else changes.
+
 ## v0.7.0
 
 ### Added
