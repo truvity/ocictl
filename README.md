@@ -96,8 +96,11 @@ smctl serve --config /etc/smctl/config.yaml
 ### helmctl
 
 ```bash
-# Package a chart (source directory is never modified)
+# Package a chart (the source is only touched to drop dependency build artifacts)
 helmctl package --chart charts/cilium-crds --version 1.19.5 --output dist/
+
+# Chart.yaml `dependencies:` (file:// library in the same repo, oci://, https://)
+# are resolved automatically, honouring Chart.lock — see docs/goreleaser.md
 
 # Push to GHCR
 helmctl push --tgz dist/cilium-crds-1.19.5.tgz \

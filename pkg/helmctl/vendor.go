@@ -1,13 +1,16 @@
 package helmctl
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -35,27 +38,75 @@ func hasDependencies(chartDir string) (bool, error) {
 	return len(meta.Dependencies) > 0, nil
 }
 
-// vendorDependencies runs `helm dependency update` against the SOURCE chart
+// vendorDependencies runs `helm dependency build` against the SOURCE chart
 // directory. It must run there, not on the temp copy: file:// repositories
 // resolve relative to the chart directory, so a repo-internal dependency
-// (the monorepo pattern — e.g. a project chart depending on a shared chart
-// in the same tree) only resolves from the chart's real location.
+// (the monorepo pattern — e.g. a service chart depending on a library chart
+// in the same tree and released under the same tag) only resolves from the
+// chart's real location.
+//
+// `build` — not `update` — is deliberate: it honours a committed Chart.lock
+// (fetching exactly the locked versions, so the dependency set is reviewed
+// rather than floating) and refuses a lock that no longer matches the
+// Chart.yaml dependencies, instead of silently re-locking. With no lock yet
+// it behaves like `update` and writes one. file://, oci:// and https
+// repositories are all handled by helm itself.
 //
 // This is the one deliberate exception to "never alters source": it drops
-// charts/*.tgz and Chart.lock into the source chart — build artifacts the
-// owning repo is expected to gitignore. Both are re-derived on every run.
+// charts/*.tgz (and Chart.lock when none was committed) into the source
+// chart — build artifacts the owning repo is expected to gitignore (charts/)
+// or commit (Chart.lock).
 func vendorDependencies(ctx context.Context, logger *slog.Logger, chartDir string) error {
-	logger.InfoContext(ctx, "vendoring chart dependencies",
+	logger.InfoContext(ctx, "resolving chart dependencies",
 		slog.String("chart", filepath.Base(chartDir)),
 	)
 
+	var stderr bytes.Buffer
+
 	//nolint:gosec // caller-config path
-	cmd := exec.CommandContext(ctx, "helm", "dependency", "update", "--skip-refresh", chartDir)
+	cmd := exec.CommandContext(ctx, "helm", "dependency", "build", "--skip-refresh", chartDir)
 	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("helm dependency update %s: %w", chartDir, err)
+		msg := strings.TrimSpace(stderr.String())
+
+		hint := ""
+		if strings.Contains(msg, "out of sync") {
+			hint = " (Chart.lock is stale: run `helm dependency update` in the chart and commit the new Chart.lock)"
+		}
+
+		return fmt.Errorf("resolve dependencies of chart %s: %w: %s%s", chartDir, err, msg, hint)
+	}
+
+	return nil
+}
+
+// normalizeVendoredDependencies rewrites every charts/*.tgz in the temp copy
+// through NormalizeTgz, so embedded dependency archives carry no timestamps
+// or ownership. Helm 4 re-expands them at package time (making this a no-op
+// for the output), but an older helm embeds the tarballs verbatim, and an
+// embedded tgz is opaque bytes to any outer normalization pass.
+func normalizeVendoredDependencies(chartTmp string) error {
+	matches, err := filepath.Glob(filepath.Join(chartTmp, "charts", "*.tgz"))
+	if err != nil {
+		return fmt.Errorf("list dependency archives: %w", err)
+	}
+
+	for _, m := range matches {
+		data, err := os.ReadFile(m) //nolint:gosec // under the temp copy
+		if err != nil {
+			return fmt.Errorf("read %s: %w", m, err)
+		}
+
+		norm, err := NormalizeTgz(data)
+		if err != nil {
+			return fmt.Errorf("normalize %s: %w", filepath.Base(m), err)
+		}
+
+		if err := os.WriteFile(m, norm, 0o644); err != nil { //nolint:gosec // chart archive, world-readable
+			return fmt.Errorf("write %s: %w", m, err)
+		}
 	}
 
 	return nil

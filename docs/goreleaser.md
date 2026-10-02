@@ -29,6 +29,40 @@ helmctl push --tgz dist/myproject/charts/myproject-1.2.3.tgz \
   --name myproject --version 1.2.3
 ```
 
+## Chart dependencies
+
+`helmctl package` resolves `Chart.yaml` `dependencies:` before packaging
+(the equivalent of `helm dependency build`), so a chart can depend on a
+library chart without vendoring a copy of it:
+
+```yaml
+dependencies:
+  - name: service-lib
+    version: 1.0.0
+    repository: file://../service-lib     # same repo, relative to the chart dir
+  # or: repository: oci://ghcr.io/example/charts
+```
+
+- `file://` repositories resolve relative to the chart directory; `oci://`
+  and `https://` repositories are fetched by `helm`. A library in the same
+  repository is released under the same tag as the chart that uses it.
+- A committed `Chart.lock` is honoured: exactly the locked versions are
+  fetched. A lock that no longer matches `dependencies:` is refused with a
+  message naming the fix (`helm dependency update`, commit the new lock).
+  With no lock, one is written. An unresolvable dependency fails the
+  package step.
+- Resolution runs in the source chart directory (a `file://` path only makes
+  sense there), so `charts/*.tgz` appears there; gitignore it. A chart with
+  no `dependencies:` is packaged exactly as before.
+- Determinism: the packaged copy's `Chart.lock` has its `generated:` time
+  pinned and embedded dependency archives are normalised; `helmctl push`
+  normalises the final layer, so the OCI digest depends only on content.
+- `--require-image-digests` also covers dependencies: a dependency's own
+  `images:` defaults, overridden by what the parent sets under the
+  dependency's name (or `alias`), must carry digests. A manifest overlay is
+  still applied to the parent chart's `images:` only.
+- `helm` must be on `PATH` (as it already is for `package`).
+
 Because the two `helmctl` steps only read files from `dist/`, ordering is
 trivially safe **within one job**: once the `goreleaser` process has
 exited, `artifacts.json` and `metadata.json` are complete.
