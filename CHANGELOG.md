@@ -3,7 +3,7 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
-## Unreleased
+## v0.8.1
 
 - **The CRD charts leave this repository.** `barman-cloud-crds` moved to truvity/cnpg, `volume-snapshot-crds` and `cilium-crds` to truvity/k8s, each publishing at the upstream version it mirrors, as before. Nothing is published from here any more (`publish-charts.yaml` and the `crd-*` recipes are gone); the versions already at `ghcr.io/truvity/charts/<name>` are untouched. `crdctl` itself is unchanged and stays: the new homes run it from a pinned release.
 
