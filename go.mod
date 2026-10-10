@@ -2,7 +2,7 @@ module github.com/truvity/ocictl
 
 go 1.27.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.6
