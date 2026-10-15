@@ -3,6 +3,23 @@ project_name: ocictl
 version: 2
 
 builds:
+  # The single binary. helmctl, crdctl and smctl below are its deprecated
+  # names (see the migration table in README.md): same code, still published for two
+  # releases so existing callers keep working.
+  - id: ocictl
+    main: ./cmd/ocictl
+    binary: ocictl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
   - id: helmctl
     main: ./cmd/helmctl
     binary: helmctl
@@ -46,6 +63,12 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 archives:
+  - id: ocictl
+    ids:
+      - ocictl
+    formats: [tar.gz]
+    name_template: "ocictl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
   - id: helmctl
     ids:
       - helmctl
@@ -95,10 +118,23 @@ release:
 
     ```bash
     # Via go run (no install needed):
-    go run github.com/truvity/ocictl/cmd/helmctl@{{ .Tag }} --help
-    go run github.com/truvity/ocictl/cmd/crdctl@{{ .Tag }} --help
-    go run github.com/truvity/ocictl/cmd/smctl@{{ .Tag }} --help
+    go run github.com/truvity/ocictl/cmd/ocictl@{{ .Tag }} --help
     ```
+
+    ### Deprecated: helmctl, crdctl, smctl
+
+    `ocictl` is the single binary. `helmctl`, `crdctl` and `smctl` are still
+    published, with identical flags and output, but are **deprecated** and
+    will stop being published after two releases. Migrate:
+
+    | Old | New |
+    | --- | --- |
+    | `helmctl <cmd>` | `ocictl chart <cmd>` |
+    | `crdctl <cmd>` | `ocictl crd <cmd>` |
+    | `smctl <cmd>` | `ocictl sourcemaps <cmd>` |
+
+    The `ocictl` binary also answers to the old names when invoked through
+    them (argv[0] `helmctl`, `crdctl`, `smctl`).
 
     ### Source-map service image
 

@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -24,6 +25,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/memory"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
@@ -149,6 +151,36 @@ func PushWithOptions(
 	)
 
 	return &PushResult{Digest: manifestDesc.Digest.String()}, nil
+}
+
+// Resolve returns the manifest digest the tag currently points at in repoRef
+// (host/path, no tag). found is false, with a nil error, when the tag does
+// not exist.
+func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst string, found bool, err error) {
+	repo, err := remote.NewRepository(repoRef)
+	if err != nil {
+		return "", false, fmt.Errorf("create remote repo %q: %w", repoRef, err)
+	}
+
+	repo.PlainHTTP = opts.PlainHTTP
+
+	credential := opts.Credential
+	if credential == nil {
+		credential = resolveCredentials(repoRef, opts.AWSProfile)
+	}
+
+	repo.Client = &auth.Client{Credential: credential}
+
+	desc, err := repo.Resolve(ctx, tag)
+	if err != nil {
+		if errors.Is(err, errdef.ErrNotFound) {
+			return "", false, nil
+		}
+
+		return "", false, fmt.Errorf("resolve %s:%s: %w", repoRef, tag, err)
+	}
+
+	return desc.Digest.String(), true, nil
 }
 
 // BuildManifest constructs a deterministic OCI manifest from an Artifact.

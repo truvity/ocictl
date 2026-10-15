@@ -12,14 +12,39 @@ Deterministic OCI chart packaging and CRD repack tooling.
 
 Anyone who needs to turn a build into a **digest-pinned, immutable** Helm
 chart and push it to an OCI registry (GHCR or a private ECR), or who needs
-to repack a third party's CRDs into a chart. Three binaries; `ocictl` is the
-repository name, never a command:
+to repack a third party's CRDs into a chart, or to publish a source-map
+bundle or a static site as a reproducible OCI artifact. One binary, `ocictl`,
+with subcommands:
 
-| Binary      | Purpose                                                    |
-| ----------- | ---------------------------------------------------------- |
-| **helmctl** | Deterministic Helm chart packaging + OCI push (GHCR + ECR) |
-| **crdctl**  | Fetch upstream CRDs → generate chart → package → push      |
-| **smctl**   | Source maps as OCI artifacts: push after a release, serve to Alloy |
+| Command | Purpose |
+| --- | --- |
+| `ocictl chart` | Deterministic Helm chart packaging + OCI push (GHCR + ECR): `goreleaser-manifest`, `package`, `push` |
+| `ocictl crd` | Fetch upstream CRDs → generate chart → package → push: `build`, `publish` |
+| `ocictl sourcemaps` | Source maps as OCI artifacts: `push` after a release, `serve` to Alloy |
+| `ocictl static push` | A directory as a deterministic OCI artifact or image, idempotent against immutable tags ([docs/static.md](docs/static.md)) |
+| `ocictl digest <dir>` | The layer and manifest digests of a directory, no push |
+
+### Migrating from helmctl, crdctl and smctl
+
+`helmctl`, `crdctl` and `smctl` are **deprecated**: still built and
+published as release assets (and as `cmd/` packages, so `go run` and
+`go tool` callers keep working) for two more releases, with identical flags
+and output. The `ocictl` binary also answers to them: invoked as `helmctl`,
+`crdctl` or `smctl` (argv[0], for example a symlink), it behaves exactly like
+that tool.
+
+| Old | New |
+| --- | --- |
+| `helmctl goreleaser-manifest …` | `ocictl chart goreleaser-manifest …` |
+| `helmctl package …` | `ocictl chart package …` |
+| `helmctl push …` | `ocictl chart push …` |
+| `crdctl build …` | `ocictl crd build …` |
+| `crdctl publish …` | `ocictl crd publish …` |
+| `smctl push …` | `ocictl sourcemaps push …` |
+| `smctl serve …` | `ocictl sourcemaps serve …` |
+
+Flags are unchanged. The source-map service image (`ghcr.io/truvity/ocictl/smctl`)
+still runs `smctl serve`.
 
 AI agents: start with **[AGENTS.md](AGENTS.md)** — the exhaustive command
 surface and the rule for not inventing one.
@@ -39,6 +64,9 @@ Two independent pipelines that share one deterministic push primitive:
 | [`pkg/goreleaserdist`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/goreleaserdist) | Parse a GoReleaser `dist/` (images + index digests + version) into a release manifest     |
 | [`pkg/sourcemaps`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/sourcemaps)         | Source-map OCI artifact: deterministic packing, version-tag sanitising, push             |
 | [`pkg/smserver`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/smserver)             | HTTP service answering Alloy `faro.receiver` source-map lookups from those artifacts      |
+| [`pkg/layer`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/layer)                   | Deterministic directory → tar+gzip layer, shared by source maps and static sites          |
+| [`pkg/static`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/static)                 | Static-site OCI artifact (artifact and image shapes), digests, idempotent push            |
+| [`pkg/commands`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/commands/app)         | The CLI command definitions; `ocictl` and the deprecated aliases are assembled from these |
 | [`pkg/crdctl`](https://pkg.go.dev/github.com/truvity/ocictl/pkg/crdctl)                 | CRD fetch from GitHub + chart generation + publish pipeline                               |
 
 Determinism is the point of the push primitive, not an add-on:
@@ -48,17 +76,18 @@ Determinism is the point of the push primitive, not an add-on:
 - Same content → same manifest digest, safe for an immutable tag
 
 No particular is ever baked in: `--registry`, `--repository` and `--profile`
-are required, caller-supplied flags on every push (`helmctl push`,
-`crdctl publish`) — the binary itself carries no default account, region or
+are required, caller-supplied flags on every push (`ocictl chart push`,
+`ocictl crd publish`) — the binary itself carries no default account, region or
 profile. See [below](#the-rule-that-makes-this-repository-public).
 
 ## Install and a worked example
 
 ```bash
 # Via go run (no install needed), pinned to a release:
-go run github.com/truvity/ocictl/cmd/helmctl@v0.6.1 --help
-go run github.com/truvity/ocictl/cmd/crdctl@v0.6.1 --help
+go run github.com/truvity/ocictl/cmd/ocictl@<release> --help
 ```
+
+(`cmd/helmctl`, `cmd/crdctl` and `cmd/smctl` still build; they are deprecated.)
 
 Consuming this from another repository — pinning the version in `go.mod`,
 a `bin/helmctl` wrapper, and devbox PATH so employees and CI run the same
@@ -145,6 +174,7 @@ Who uses ocictl, and through which surface:
 - [AGENTS.md](AGENTS.md) — the exhaustive command surface, for agents and humans alike
 - [docs/consuming.md](docs/consuming.md) — pinning and wiring ocictl's
   tools from another repository
+- [docs/static.md](docs/static.md) — static sites as OCI artifacts: shapes, idempotent push, digests
 - [docs/sourcemaps.md](docs/sourcemaps.md) — source maps as OCI artifacts: publish, serve, security model
 - [docs/goreleaser.md](docs/goreleaser.md) — the helmctl + GoReleaser pipeline in full
 - [CHANGELOG.md](CHANGELOG.md) — release notes

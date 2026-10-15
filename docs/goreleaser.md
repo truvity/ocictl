@@ -1,5 +1,9 @@
 # Deterministic, immutable Helm charts with GoReleaser
 
+> `helmctl` is a deprecated name of `ocictl chart`; every `helmctl …` below is
+> the same as `ocictl chart …`. Static sites follow the same post-release
+> pattern: see [static.md](static.md).
+
 `helmctl` turns a GoReleaser build into a **self-contained Helm chart**: the
 chart version comes from the release, and every image reference inside the
 chart's `values.yaml` is pinned by its **multi-arch manifest digest** — no

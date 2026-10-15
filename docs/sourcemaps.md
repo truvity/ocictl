@@ -1,5 +1,8 @@
 # Source maps as OCI artifacts
 
+> `smctl` is a deprecated name of `ocictl sourcemaps`; every `smctl …` below
+> is the same as `ocictl sourcemaps …`.
+
 A browser SPA ships minified JavaScript; when it reports an error through
 Grafana Faro, the stack frames point into `assets/index-3fa9.js:1:48213` and
 mean nothing until they are mapped back to source. `smctl` makes the source
