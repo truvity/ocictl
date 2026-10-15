@@ -3,7 +3,7 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
-## v0.8.3
+## v0.9.0
 
 ### Added
 
@@ -27,6 +27,8 @@ Release notes for earlier versions are generated from commit history on the
   `cmd/` packages). They are unchanged and still published, but will stop
   being published after two releases. Use `ocictl chart`, `ocictl crd` and
   `ocictl sourcemaps`; the table is in the README.
+
+## v0.8.3
 
 ### Security
 
