@@ -5,50 +5,64 @@ repo that consumes it. Human-readable too — nothing here is agent-only.
 
 ## What this repo ships
 
-Three binaries. `ocictl` is the **repository** name, never a command:
+One binary, `ocictl`, with subcommands. `ocictl` is also the repository name.
 
 | Command | Does |
 | --- | --- |
-| `helmctl` | deterministic Helm chart packaging + OCI push |
-| `crdctl`  | fetch upstream CRDs → generate chart → package → push |
-| `smctl`   | source maps as OCI artifacts: `push` after a release, `serve` to Grafana Alloy |
+| `ocictl chart` | deterministic Helm chart packaging + OCI push (was `helmctl`) |
+| `ocictl crd` | fetch upstream CRDs → generate chart → package → push (was `crdctl`) |
+| `ocictl sourcemaps` | source maps as OCI artifacts: `push` after a release, `serve` to Grafana Alloy (was `smctl`) |
+| `ocictl static push` | a directory as a deterministic OCI artifact or image, idempotent ([docs/static.md](docs/static.md)) |
+| `ocictl digest <dir>` | the layer and manifest digests of a directory, no push |
 
-Writing `ocictl helmctl …` in a shell fails with `ocictl: command not found`.
-In prose, some repos use "ocictl helmctl" to mean "helmctl, from ocictl" —
-that is fine in a sentence and wrong in a code block.
+`helmctl`, `crdctl` and `smctl` are **deprecated** aliases: separate
+release assets and `cmd/` packages with identical flags and output, kept for two
+releases. The `ocictl` binary also behaves as them when invoked under those
+names (argv[0]). Prefer the `ocictl …` spelling in anything you write.
+
+Writing `ocictl helmctl …` fails: the old names are not subcommands. The chart
+tool is `ocictl chart …`.
 
 ## The command surface, exhaustively
 
-This is the whole of `helmctl`. There are no other subcommands:
+This is the whole of `ocictl`. There are no other subcommands (`release run` and
+`release plan` are planned, not present):
 
 ```
-helmctl goreleaser-manifest --goreleaser-dist <dir> [--images a,b] [-o <file>]
-helmctl package  --chart <dir> (--version <ver> | --manifest <file>)
-                 [--app-version <ver>] [--require-image-digests] [--output <dir>]
-helmctl push     --tgz <file> --registry <url> --repository <path>
-                 --name <name> --version <ver> [--profile <aws>]
+ocictl chart goreleaser-manifest --goreleaser-dist <dir> [--images a,b] [-o <file>]
+ocictl chart package  --chart <dir> (--version <ver> | --manifest <file>)
+                      [--app-version <ver>] [--require-image-digests] [--output <dir>]
+ocictl chart push     --tgz <file> --registry <url> --repository <path>
+                      --name <name> --version <ver> [--profile <aws>]
+ocictl crd build      --config <crdctl.yaml>
+ocictl crd publish    --config <crdctl.yaml> --registry <url> --repository <path> [--profile <aws>]
+ocictl sourcemaps push  --maps <dir> [--include <pattern>...] [--dry-run] [--profile <aws>]
+                        ( --goreleaser-dist <dir> --image <name> [--app <name>] [--repository-template <tpl>]
+                        | --repository <host/path> )  [--version <ver>]
+ocictl sourcemaps serve --config <file>
+ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
+                      [--shape artifact|image] [--architecture <a>] [--os <os>]
+                      [--annotation k=v]... [--profile <aws>] [--dry-run]
+ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
 
-Note `push` takes **no positional project argument**. `helmctl push myproject`
-is not a shorter form of anything; it fails on missing required flags.
+Note `chart push` takes **no positional project argument**.
+`ocictl chart push myproject` is not a shorter form of anything; it fails on
+missing required flags. `digest` is the one command with a positional argument
+(the directory).
 
-`smctl` has two subcommands and nothing else
-([docs/sourcemaps.md](docs/sourcemaps.md)):
+The deprecated names expose the same subcommands at the top level
+(`helmctl package …`, `smctl push …`; `docs/sourcemaps.md` and
+`docs/goreleaser.md` still use them).
 
-```
-smctl push  --maps <dir> [--include <pattern>...] [--dry-run] [--profile <aws>]
-            ( --goreleaser-dist <dir> --image <name> [--app <name>] [--repository-template <tpl>]
-            | --repository <host/path> )  [--version <ver>]
-smctl serve --config <file>
-```
-
-Source of truth: [`cmd/helmctl/main.go`](cmd/helmctl/main.go) and
-[`cmd/smctl/main.go`](cmd/smctl/main.go). If this file and
-that file disagree, that file is right and this one is a bug — fix it.
+Source of truth: the command definitions in
+[`pkg/commands/`](pkg/commands) (`chartcmd`, `crdcmd`, `smcmd`, `staticcmd`),
+assembled in [`pkg/commands/app/app.go`](pkg/commands/app/app.go). If this file
+and those disagree, they are right and this one is a bug — fix it.
 
 ## If you are about to write a command into documentation
 
-Read `cmd/<tool>/main.go` first. Not the README, not a grep of how often a
+Read the command definitions in `pkg/commands/` first. Not the README, not a grep of how often a
 string appears in other docs, and not another repo's prose.
 
 This warning exists because of a real incident (2026-08-16). An agent cleaning

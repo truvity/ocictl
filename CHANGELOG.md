@@ -5,6 +5,29 @@ Release notes for earlier versions are generated from commit history on the
 
 ## Unreleased
 
+### Added
+
+- **`ocictl`, one binary.** `ocictl chart` (was `helmctl`), `ocictl crd` (was
+  `crdctl`), `ocictl sourcemaps push|serve` (was `smctl`), and two new
+  commands below. The binary also answers to the old names: invoked as
+  `helmctl`, `crdctl` or `smctl` (argv[0]), it behaves exactly as that tool did.
+- **`ocictl static push`.** Packs a directory, with no file filter, into the
+  same deterministic tar+gzip layer and pushes it under a version tag, as an
+  OCI artifact (`--shape artifact`, the default) or an image (`--shape image`).
+  The push is idempotent against immutable registries: a tag that already
+  holds the same manifest is "already present", a different one is an error
+  naming both digests. See `docs/static.md`.
+- **`ocictl digest <dir>`.** Prints the layer, config and manifest digests
+  without pushing; the same lines as `static push --dry-run`.
+- `ocictl` is a release asset next to the existing ones.
+
+### Deprecated
+
+- `helmctl`, `crdctl` and `smctl` (as separate release assets and as
+  `cmd/` packages). They are unchanged and still published, but will stop
+  being published after two releases. Use `ocictl chart`, `ocictl crd` and
+  `ocictl sourcemaps`; the table is in the README.
+
 ### Security
 
 - Go toolchain 1.27.2, which fixes the standard-library vulnerabilities
