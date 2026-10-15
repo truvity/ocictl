@@ -13,6 +13,7 @@ import (
 
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/helmctl"
+	"github.com/truvity/ocictl/pkg/ocipush"
 )
 
 // Commands returns goreleaser-manifest, package and push.
@@ -121,13 +122,20 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
 				&cli.StringFlag{Name: "name", Usage: "Chart name (for OCI config blob)", Required: true},
 				&cli.StringFlag{Name: "version", Usage: "Chart version (for OCI tag + config)", Required: true},
+				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 			},
 			Action: func(ctx context.Context, cmd *cli.Command) error {
+				created, err := ocipush.ResolveCreated(cmd.String("created"))
+				if err != nil {
+					return err
+				}
+
 				result, err := helmctl.Push(ctx, logger, helmctl.PushConfig{
 					TgzPath:    cmd.String("tgz"),
 					Registry:   cmd.String("registry"),
 					Repository: cmd.String("repository"),
 					AWSProfile: cmd.String("profile"),
+					Created:    created,
 					Meta: helmctl.ChartMeta{
 						Name:       cmd.String("name"),
 						Version:    cmd.String("version"),

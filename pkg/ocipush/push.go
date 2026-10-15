@@ -3,7 +3,9 @@
 // It wraps the ORAS library to produce reproducible OCI manifests:
 // same content always yields the same manifest digest. This is achieved
 // by omitting non-deterministic annotations (org.opencontainers.image.created)
-// and using a fixed config blob.
+// and using a fixed config blob. The one exception is a creation time the
+// caller derives from the source (Artifact.Created, see ResolveCreated),
+// which is the same for the same source.
 //
 // Supports both GHCR (Bearer token via GITHUB_TOKEN) and ECR
 // (Docker credential helper via AWS_PROFILE).
@@ -19,6 +21,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
@@ -48,8 +51,13 @@ type (
 		// (e.g. "application/vnd.ocictl.sourcemaps.v1"). Empty omits it.
 		ArtifactType string
 		// Annotations are optional manifest-level annotations.
-		// org.opencontainers.image.created is always stripped for determinism.
+		// org.opencontainers.image.created is always stripped from this map
+		// for determinism; set Created instead.
 		Annotations map[string]string
+		// Created, when non-zero, is written as org.opencontainers.image.created
+		// in UTC at seconds precision. It must come from the source (see
+		// ResolveCreated), never from the wall clock.
+		Created time.Time
 	}
 
 	// Options tunes Push beyond the defaults. The zero value is what Push uses.
@@ -184,7 +192,8 @@ func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst strin
 }
 
 // BuildManifest constructs a deterministic OCI manifest from an Artifact.
-// Strips org.opencontainers.image.created from annotations.
+// Strips org.opencontainers.image.created from Annotations; the annotation is
+// written only from Artifact.Created.
 func BuildManifest(artifact Artifact) ([]byte, error) {
 	layerDesc := DescriptorFromBytes(artifact.LayerMediaType, artifact.Layer)
 	configDesc := DescriptorFromBytes(artifact.ConfigMediaType, artifact.Config)
@@ -209,6 +218,14 @@ func BuildManifest(artifact Artifact) ([]byte, error) {
 		if len(filtered) > 0 {
 			manifest.Annotations = filtered
 		}
+	}
+
+	if !artifact.Created.IsZero() {
+		if manifest.Annotations == nil {
+			manifest.Annotations = make(map[string]string, 1)
+		}
+
+		manifest.Annotations[ocispec.AnnotationCreated] = artifact.Created.UTC().Truncate(time.Second).Format(time.RFC3339)
 	}
 
 	data, err := json.Marshal(manifest)

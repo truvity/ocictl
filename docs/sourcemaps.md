@@ -29,7 +29,7 @@ the way images are.
 | layers | exactly one: `application/vnd.oci.image.layer.v1.tar+gzip` |
 | layer content | the `*.map` files, each at the path it is requested under (`assets/index-3fa9.js.map`) |
 | tag | the release version, `+` replaced by `_`; anything not matching `^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$` is refused |
-| annotation | `org.opencontainers.image.version` = the unsanitised version; **no** `created` |
+| annotation | `org.opencontainers.image.version` = the unsanitised version; `created` only from `SOURCE_DATE_EPOCH` or `--created`, otherwise none (see [static.md](static.md#creation-time)) |
 
 The artifact is addressed by **version tag only**. There is no OCI subject or
 referrer link to the application image: the server needs nothing but the

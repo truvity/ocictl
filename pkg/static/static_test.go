@@ -264,3 +264,68 @@ func TestPushIsIdempotent(t *testing.T) {
 		t.Fatalf("manifest %+v %v", m, err)
 	}
 }
+
+// Golden digests of fixedTree with a source date of 2023-11-14T22:13:20Z
+// (SOURCE_DATE_EPOCH=1700000000). The layer does not move: the date lives in
+// the manifest annotation and, for the image shape, the config.
+const (
+	goldenDatedArtifactManifest = "sha256:faeae7defd8f570ffbda77a2521b2ce8b949bbb385d277f94bf986e6ce78cf7b"
+	goldenDatedImageConfig      = "sha256:ac5b0643ec1a7bafed056f1813bc845789e0807f81eba9e4ec20743cb7712e92"
+	goldenDatedImageManifest    = "sha256:8aedbeced7c403a9807ea7851e36a50d1d01263d8c3bcd468299859137e3f858"
+)
+
+func TestGoldenDigestsWithSourceDate(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, fixedTree, time.Now())
+
+	t.Setenv(ocipush.SourceDateEpochEnv, "1700000000")
+
+	created, err := ocipush.ResolveCreated("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a := describe(t, dir, static.Options{Shape: static.ShapeArtifact, Tag: "1.0.0", Created: created})
+	i := describe(t, dir, static.Options{Shape: static.ShapeImage, Tag: "1.0.0", Created: created})
+
+	t.Logf("artifactManifest=%s imageConfig=%s imageManifest=%s", a.Manifest, i.Config, i.Manifest)
+
+	if a.Layer != goldenLayer || i.Layer != goldenLayer {
+		t.Errorf("layer digest moved: %s / %s, want %s", a.Layer, i.Layer, goldenLayer)
+	}
+
+	if a.Manifest != goldenDatedArtifactManifest || a.Manifest == goldenArtifactManifest {
+		t.Errorf("dated artifact manifest %s, want %s", a.Manifest, goldenDatedArtifactManifest)
+	}
+
+	if i.Config != goldenDatedImageConfig || i.Manifest != goldenDatedImageManifest {
+		t.Errorf("dated image config/manifest %s / %s, want %s / %s", i.Config, i.Manifest, goldenDatedImageConfig, goldenDatedImageManifest)
+	}
+
+	// The same source date, a different tree mtime and a rebuild: same digests.
+	other := t.TempDir()
+	writeTree(t, other, fixedTree, time.Unix(1_000_000, 0))
+
+	if again := describe(t, other, static.Options{Shape: static.ShapeImage, Tag: "1.0.0", Created: created}); again != i {
+		t.Errorf("same source date, different digests: %v vs %v", again, i)
+	}
+}
+
+func TestImageConfigCreated(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, fixedTree, time.Now())
+
+	packed, err := static.Pack(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	art, err := static.Artifact(packed, static.Options{Shape: static.ShapeImage, Created: time.Unix(1700000000, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.HasPrefix(string(art.Config), `{"created":"2023-11-14T22:13:20Z","architecture":`) {
+		t.Fatalf("config %s", art.Config)
+	}
+}

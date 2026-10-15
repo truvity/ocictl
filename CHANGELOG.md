@@ -3,6 +3,19 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## Unreleased
+
+### Added
+
+- **`org.opencontainers.image.created` from the source date.** `static push`,
+  `digest`, `sourcemaps push`, `chart push` and `crd publish` set the manifest
+  annotation (and, for `static --shape image`, the config's `created`) from
+  `SOURCE_DATE_EPOCH` when set, else from the new `--created <RFC3339>` flag,
+  else omit it as before. RFC 3339 in UTC at seconds precision, never the wall
+  clock; the same date gives byte-identical digests. Kargo reads this
+  annotation for Freight creation time. Digests without a date are unchanged.
+  See `docs/static.md`.
+
 ## v0.9.0
 
 ### Added

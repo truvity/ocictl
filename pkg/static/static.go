@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -69,6 +70,9 @@ type Options struct {
 	Architecture, OS string
 	// Annotations are manifest annotations.
 	Annotations map[string]string
+	// Created, when non-zero, is the manifest's org.opencontainers.image.created
+	// and, for the image shape, the config's created. See ocipush.ResolveCreated.
+	Created time.Time
 }
 
 // Pack packs dir with no file filtering. It refuses a directory with no files.
@@ -101,6 +105,7 @@ func Artifact(packed *layer.Packed, o Options) (ocipush.Artifact, error) {
 		LayerMediaType: LayerMediaType,
 		Tag:            tag,
 		Annotations:    o.Annotations,
+		Created:        o.Created,
 	}
 
 	switch o.Shape {
@@ -124,7 +129,8 @@ func Artifact(packed *layer.Packed, o Options) (ocipush.Artifact, error) {
 }
 
 // imageConfig renders the minimal image config. Field order is fixed by the
-// struct; there is no created, no history, no config section.
+// struct; there is no history and no config section, and created appears only
+// when the caller supplies one.
 func imageConfig(packed *layer.Packed, o Options) ([]byte, error) {
 	type rootfs struct {
 		Type    string   `json:"type"`
@@ -132,6 +138,7 @@ func imageConfig(packed *layer.Packed, o Options) ([]byte, error) {
 	}
 
 	type config struct {
+		Created      string `json:"created,omitempty"`
 		Architecture string `json:"architecture"`
 		OS           string `json:"os"`
 		RootFS       rootfs `json:"rootfs"`
@@ -141,6 +148,10 @@ func imageConfig(packed *layer.Packed, o Options) ([]byte, error) {
 		Architecture: o.Architecture,
 		OS:           o.OS,
 		RootFS:       rootfs{Type: "layers", DiffIDs: []string{packed.DiffID.String()}},
+	}
+
+	if !o.Created.IsZero() {
+		c.Created = o.Created.UTC().Truncate(time.Second).Format(time.RFC3339)
 	}
 
 	if c.Architecture == "" {

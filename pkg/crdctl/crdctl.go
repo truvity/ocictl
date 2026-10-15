@@ -51,6 +51,9 @@ type (
 		Repository string
 		// AWSProfile is optional (only for ECR).
 		AWSProfile string
+		// Created, when non-zero, becomes the chart manifest's
+		// org.opencontainers.image.created (see ocipush.ResolveCreated).
+		Created time.Time
 	}
 
 	// githubContentEntry represents a file entry from the GitHub Contents API.
@@ -182,6 +185,7 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		Registry:   cfg.Registry,
 		Repository: cfg.Repository,
 		AWSProfile: cfg.AWSProfile,
+		Created:    cfg.Created,
 		Meta: helmctl.ChartMeta{
 			Name:        buildResult.Name,
 			Version:     buildResult.Version,

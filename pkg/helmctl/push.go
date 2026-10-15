@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/truvity/ocictl/pkg/ocipush"
 )
@@ -30,6 +31,9 @@ type (
 		Repository string
 		// AWSProfile is the AWS profile for ECR authentication (optional, only for ECR).
 		AWSProfile string
+		// Created, when non-zero, becomes the manifest's
+		// org.opencontainers.image.created (see ocipush.ResolveCreated).
+		Created time.Time
 		// Meta holds chart metadata for the OCI config blob.
 		Meta ChartMeta
 	}
@@ -68,7 +72,8 @@ type (
 //
 // Determinism guarantees:
 //   - tar entries sorted alphabetically, timestamps normalized to epoch 0
-//   - OCI manifest has no org.opencontainers.image.created annotation
+//   - OCI manifest has no org.opencontainers.image.created annotation unless
+//     PushConfig.Created is set from the source
 //   - Same chart content → same layer digest → same manifest digest
 func Push(ctx context.Context, logger *slog.Logger, cfg PushConfig) (*PushResult, error) {
 	layerData, err := normalizeAndRead(cfg.TgzPath)
@@ -107,6 +112,7 @@ func Push(ctx context.Context, logger *slog.Logger, cfg PushConfig) (*PushResult
 		ConfigMediaType: helmConfigMediaType,
 		Tag:             cfg.Meta.Version,
 		Annotations:     annotations,
+		Created:         cfg.Created,
 	}
 
 	result, err := ocipush.Push(ctx, logger, repoRef, artifact, cfg.AWSProfile)

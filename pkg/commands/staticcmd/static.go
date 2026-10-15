@@ -28,6 +28,7 @@ func shapeFlags() []cli.Flag {
 		&cli.StringFlag{Name: "architecture", Usage: "Image config architecture (shape image)", Value: static.DefaultArchitecture},
 		&cli.StringFlag{Name: "os", Usage: "Image config os (shape image)", Value: static.DefaultOS},
 		&cli.StringSliceFlag{Name: "annotation", Usage: "Manifest annotation key=value (repeatable)"},
+		&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 	}
 }
 
@@ -105,6 +106,11 @@ func build(dir, tag string, cmd *cli.Command) (ocipush.Artifact, int, error) {
 		return ocipush.Artifact{}, 0, err
 	}
 
+	created, err := ocipush.ResolveCreated(cmd.String("created"))
+	if err != nil {
+		return ocipush.Artifact{}, 0, err
+	}
+
 	packed, err := static.Pack(dir)
 	if err != nil {
 		return ocipush.Artifact{}, 0, err
@@ -116,6 +122,7 @@ func build(dir, tag string, cmd *cli.Command) (ocipush.Artifact, int, error) {
 		Architecture: cmd.String("architecture"),
 		OS:           cmd.String("os"),
 		Annotations:  annotations,
+		Created:      created,
 	})
 
 	return art, len(packed.Files), err

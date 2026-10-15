@@ -12,6 +12,7 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/truvity/ocictl/pkg/crdctl"
+	"github.com/truvity/ocictl/pkg/ocipush"
 )
 
 // Commands returns build and publish.
@@ -42,13 +43,20 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "registry", Usage: "OCI registry URL", Required: true},
 				&cli.StringFlag{Name: "repository", Usage: "Chart path in registry", Required: true},
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
+				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 			},
 			Action: func(ctx context.Context, cmd *cli.Command) error {
+				created, err := ocipush.ResolveCreated(cmd.String("created"))
+				if err != nil {
+					return err
+				}
+
 				return crdctl.Publish(ctx, logger, crdctl.PublishConfig{
 					ConfigPath: cmd.String("config"),
 					Registry:   cmd.String("registry"),
 					Repository: cmd.String("repository"),
 					AWSProfile: cmd.String("profile"),
+					Created:    created,
 				})
 			},
 		},

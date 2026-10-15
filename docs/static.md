@@ -17,8 +17,10 @@ The directory is packed into ONE layer: `application/vnd.oci.image.layer.v1.tar+
 - Entries are sorted; each has mtime 0, uid/gid 0, mode 0644, no owner names;
   the gzip header is fixed. The same tree gives the same layer whatever its
   mtimes or creation order.
-- No `org.opencontainers.image.created`. No title annotations are added; the
-  only annotations are the ones you pass with `--annotation`.
+- `org.opencontainers.image.created` only from a source date you pass (see
+  [Creation time](#creation-time)); never from the wall clock. No title
+  annotations are added; the only other annotations are the ones you pass
+  with `--annotation`.
 
 A consumer that accepts any image manifest with a tar(+gzip) layer extracted
 at the root can serve either shape.
@@ -32,7 +34,8 @@ at the root can serve either shape.
 | config content | `{}` | `{"architecture":"amd64","os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:<uncompressed tar>"]}}` |
 | layers | one tar+gzip | one tar+gzip |
 
-The image config has no `created`, no `history`. `architecture` and `os`
+The image config has no `history`, and no `created` unless you pass a source
+date (then it carries the same time as the manifest annotation). `architecture` and `os`
 default to `amd64` and `linux`; override with `--architecture` and `--os`.
 `diff_ids` is the digest of the uncompressed tar.
 
@@ -103,6 +106,35 @@ the manifest digest) for unchanged content. Consequences:
 
 Pin the ocictl version in the repository that publishes (see
 [consuming.md](consuming.md)) so the compressor changes only when you move it.
+
+## Creation time
+
+Kargo and other consumers read an image's creation time from the manifest
+annotation `org.opencontainers.image.created`, falling back to the config's
+`created`; without either they show a zero time. `ocictl` writes it only from a
+date you supply, so the same source date always gives the same digests:
+
+1. `SOURCE_DATE_EPOCH` (decimal Unix seconds), when set and non-empty;
+2. else `--created <RFC3339>`;
+3. else nothing is written (the default, and the digests of earlier releases).
+
+The value is rendered in UTC at seconds precision, `2023-11-14T22:13:20Z`. A
+malformed value is an error. The flag and variable apply to `static push`,
+`digest`, `sourcemaps push`, `chart push` and `crd publish`; for the `image`
+shape of `static` the config's `created` is set too.
+
+Use the commit time, so a rebuild of a commit is byte-identical:
+
+```bash
+SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) ocictl static push …
+```
+
+GoReleaser exposes it as `{{ .CommitTimestamp }}` (RFC 3339), for example in a
+build or after hook: `ocictl static push … --created '{{ .CommitTimestamp }}'`.
+
+Setting a date changes the manifest digest (not the layer): a tag already
+pushed without one is a different manifest, and the idempotent push refuses to
+overwrite it.
 
 ## With GoReleaser
 
