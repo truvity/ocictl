@@ -72,7 +72,7 @@ Two independent pipelines that share one deterministic push primitive:
 Determinism is the point of the push primitive, not an add-on:
 
 - Tar entries sorted alphabetically, timestamps normalized to epoch 0, UID/GID zeroed
-- No `org.opencontainers.image.created` annotation
+- No `org.opencontainers.image.created` annotation, unless you pass a source date (`SOURCE_DATE_EPOCH`, e.g. `$(git log -1 --format=%ct)`, or `--created <RFC3339>`; see [docs/static.md](docs/static.md#creation-time)); never the wall clock
 - Same content → same manifest digest, safe for an immutable tag
 
 No particular is ever baked in: `--registry`, `--repository` and `--profile`

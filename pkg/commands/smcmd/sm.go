@@ -44,6 +44,7 @@ func Commands(version string) []*cli.Command {
 				&cli.StringFlag{Name: "repository", Usage: "Explicit repository, host/path with no tag (replaces --image)"},
 				&cli.StringFlag{Name: "version", Usage: "Release version (default: the one in --goreleaser-dist)"},
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
+				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "dry-run", Usage: "Pack and print the manifest digest; push nothing"},
 			},
 			Action: runPush,
@@ -74,6 +75,10 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 
 	artifact, err := sourcemaps.Artifact(packed, version)
 	if err != nil {
+		return err
+	}
+
+	if artifact.Created, err = ocipush.ResolveCreated(cmd.String("created")); err != nil {
 		return err
 	}
 

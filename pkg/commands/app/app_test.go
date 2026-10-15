@@ -207,3 +207,42 @@ func TestStaticPushEndToEnd(t *testing.T) {
 		t.Fatalf("changed content under an existing tag: %v", err)
 	}
 }
+
+func TestCreatedFromSourceDate(t *testing.T) {
+	dir := tree(t)
+	undated, err := run(t, "ocictl", "digest", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SOURCE_DATE_EPOCH", "1700000000")
+
+	dated, err := run(t, "ocictl", "digest", dir)
+	if err != nil || dated == undated {
+		t.Fatalf("SOURCE_DATE_EPOCH changed nothing: %q %v", dated, err)
+	}
+
+	again, err := run(t, "ocictl", "digest", dir)
+	if err != nil || again != dated {
+		t.Fatalf("not reproducible: %q vs %q (%v)", again, dated, err)
+	}
+
+	t.Setenv("SOURCE_DATE_EPOCH", "")
+
+	viaFlag, err := run(t, "ocictl", "digest", dir, "--created", "2023-11-14T22:13:20Z")
+	if err != nil || viaFlag != dated {
+		t.Fatalf("--created differs from the same SOURCE_DATE_EPOCH: %q vs %q (%v)", viaFlag, dated, err)
+	}
+
+	t.Setenv("SOURCE_DATE_EPOCH", "not-a-number")
+
+	if _, err := run(t, "ocictl", "digest", dir); err == nil || !strings.Contains(err.Error(), "SOURCE_DATE_EPOCH") {
+		t.Errorf("invalid SOURCE_DATE_EPOCH: %v", err)
+	}
+
+	t.Setenv("SOURCE_DATE_EPOCH", "")
+
+	if _, err := run(t, "ocictl", "digest", dir, "--created", "yesterday"); err == nil || !strings.Contains(err.Error(), "--created") {
+		t.Errorf("invalid --created: %v", err)
+	}
+}
