@@ -3,6 +3,14 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## Unreleased
+
+### Security
+
+- Go toolchain 1.27.2, which fixes the standard-library vulnerabilities
+  `govulncheck` reported against 1.27.1. golangci-lint 2.14.0 (needed to read
+  Go 1.27.2 export data).
+
 ## v0.8.2
 
 - Dependency updates.
