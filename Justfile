@@ -19,7 +19,7 @@ test:
 # silently, so a settings block in the wrong place is otherwise invisible.
 lint:
     golangci-lint config verify
-    golangci-lint run ./...
+    GOTOOLCHAIN=local golangci-lint run ./...
 
 # Run Go vulnerability check
 vuln:
