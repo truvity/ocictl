@@ -3,6 +3,10 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.10.2
+
+- Dependency updates.
+
 ## v0.10.1
 
 - Dependency updates.
