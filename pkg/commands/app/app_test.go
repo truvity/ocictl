@@ -1,6 +1,9 @@
 package app_test
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"os"
@@ -11,6 +14,8 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 
 	"github.com/truvity/ocictl/pkg/commands/app"
+	"github.com/truvity/ocictl/pkg/commands/chartcmd"
+	"github.com/truvity/ocictl/pkg/commands/smcmd"
 	"github.com/truvity/ocictl/pkg/commands/staticcmd"
 	"github.com/truvity/ocictl/pkg/internal/fakeregistry"
 	"github.com/truvity/ocictl/pkg/ocipush"
@@ -244,5 +249,137 @@ func TestCreatedFromSourceDate(t *testing.T) {
 
 	if _, err := run(t, "ocictl", "digest", dir, "--created", "yesterday"); err == nil || !strings.Contains(err.Error(), "--created") {
 		t.Errorf("invalid --created: %v", err)
+	}
+}
+
+// plainHTTP makes every push command talk anonymously to the fake registry.
+func plainHTTP(t *testing.T) {
+	t.Helper()
+
+	opts := func(string) ocipush.Options {
+		return ocipush.Options{PlainHTTP: true, Credential: func(context.Context, string) (auth.Credential, error) {
+			return auth.EmptyCredential, nil
+		}}
+	}
+
+	oldChart, oldSM := chartcmd.RegistryOptions, smcmd.RegistryOptions
+	chartcmd.RegistryOptions, smcmd.RegistryOptions = opts, opts
+
+	t.Cleanup(func() { chartcmd.RegistryOptions, smcmd.RegistryOptions = oldChart, oldSM })
+}
+
+func chartTgz(t *testing.T, values string) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+
+	for _, f := range [][2]string{
+		{"demo/Chart.yaml", "apiVersion: v2\nname: demo\nversion: 1.0.0\n"},
+		{"demo/values.yaml", values},
+	} {
+		if err := tw.WriteHeader(&tar.Header{Name: f[0], Mode: 0o644, Size: int64(len(f[1]))}); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := tw.Write([]byte(f[1])); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	p := filepath.Join(t.TempDir(), "demo-1.0.0.tgz")
+	if err := os.WriteFile(p, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return p
+}
+
+func TestChartPushRefusesToMoveATag(t *testing.T) {
+	plainHTTP(t)
+
+	reg := fakeregistry.New("", "")
+	defer reg.Close()
+
+	push := func(tgz string, extra ...string) (string, error) {
+		args := []string{"ocictl", "chart", "push", "--tgz", tgz, "--registry", reg.Host(), "--repository", "org/charts/demo",
+			"--name", "demo", "--version", "1.0.0"}
+
+		return run(t, append(args, extra...)...)
+	}
+
+	tgz := chartTgz(t, "a: 1\n")
+
+	first, err := push(tgz)
+	if err != nil || !strings.HasPrefix(first, "pushed: "+reg.Host()+"/org/charts/demo:1.0.0 (digest: sha256:") {
+		t.Fatalf("%q %v", first, err)
+	}
+
+	second, err := push(tgz)
+	if err != nil || second != "already present: "+strings.TrimPrefix(first, "pushed: ") {
+		t.Fatalf("%q %v", second, err)
+	}
+
+	changed := chartTgz(t, "a: 2\n")
+
+	if _, err := push(changed); err == nil || strings.Count(err.Error(), "sha256:") < 2 {
+		t.Fatalf("changed content under an existing tag: %v", err)
+	}
+
+	moved, err := push(changed, "--allow-overwrite")
+	if err != nil || !strings.HasPrefix(moved, "pushed: ") || moved == first {
+		t.Fatalf("--allow-overwrite: %q %v", moved, err)
+	}
+}
+
+func TestSourcemapsPushRefusesToMoveATag(t *testing.T) {
+	plainHTTP(t)
+
+	reg := fakeregistry.New("", "")
+	defer reg.Close()
+
+	maps := t.TempDir()
+	write := func(body string) {
+		if err := os.WriteFile(filepath.Join(maps, "a.js.map"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	push := func(extra ...string) (string, error) {
+		args := []string{"ocictl", "sourcemaps", "push", "--maps", maps, "--repository", reg.Host() + "/org/maps/web", "--version", "1.0.0"}
+
+		return run(t, append(args, extra...)...)
+	}
+
+	write("{}")
+
+	first, err := push()
+	if err != nil || !strings.HasPrefix(first, reg.Host()+"/org/maps/web:1.0.0@sha256:") {
+		t.Fatalf("%q %v", first, err)
+	}
+
+	// Stdout is unchanged when the tag already holds this content.
+	if again, err := push(); err != nil || again != first {
+		t.Fatalf("%q %v", again, err)
+	}
+
+	write(`{"version":3}`)
+
+	if _, err := push(); err == nil || strings.Count(err.Error(), "sha256:") < 2 {
+		t.Fatalf("changed content under an existing tag: %v", err)
+	}
+
+	if moved, err := push("--allow-overwrite"); err != nil || moved == first {
+		t.Fatalf("--allow-overwrite: %q %v", moved, err)
 	}
 }

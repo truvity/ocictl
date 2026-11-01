@@ -146,7 +146,7 @@ func (e *env) publishWith(t *testing.T, app, version string, files map[string]st
 		return auth.Credential{Username: user, Password: password}, nil
 	}
 
-	_, err = sourcemaps.Push(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)),
+	_, _, err = sourcemaps.Push(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)),
 		e.reg.Host()+"/org/sourcemaps/"+app, art, ocipush.Options{PlainHTTP: true, Credential: cred})
 	if err != nil {
 		t.Fatal(err)

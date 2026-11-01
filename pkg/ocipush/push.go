@@ -70,6 +70,10 @@ type (
 		// Credential, when set, replaces the registry-based credential
 		// selection (ghcr token / docker credential store).
 		Credential func(ctx context.Context, hostport string) (auth.Credential, error)
+		// AllowOverwrite makes PushIdempotent write without resolving the tag
+		// first, so an existing tag is replaced even when its content differs.
+		// The default refuses to move a tag to different content.
+		AllowOverwrite bool
 	}
 
 	// PushResult contains the outcome of a successful push.
@@ -159,6 +163,81 @@ func PushWithOptions(
 	)
 
 	return &PushResult{Digest: manifestDesc.Digest.String()}, nil
+}
+
+// AllowOverwriteFlagUsage is the usage text of the --allow-overwrite flag,
+// shared by every command that pushes a tagged manifest.
+const AllowOverwriteFlagUsage = "Replace the tag when it already exists with different content (default: refuse; the same content is a no-op)"
+
+// Outcome says what PushIdempotent did.
+type Outcome int
+
+const (
+	// Pushed means the tag was absent (or overwriting was allowed) and has been written.
+	Pushed Outcome = iota
+	// AlreadyPresent means the tag already pointed at this exact manifest.
+	AlreadyPresent
+)
+
+// ManifestDigest returns the digest the artifact's manifest will have in a
+// registry, without contacting one.
+func ManifestDigest(artifact Artifact) (string, error) {
+	data, err := BuildManifest(artifact)
+	if err != nil {
+		return "", err
+	}
+
+	return DescriptorFromBytes(ocispec.MediaTypeImageManifest, data).Digest.String(), nil
+}
+
+// PushIdempotent publishes the artifact to repoRef (host/path, no tag),
+// idempotently against registries whose tags are mutable: the tag is resolved
+// first. Absent: push. Present with the same manifest digest: nothing is
+// written and AlreadyPresent is returned. Present with another digest: an
+// error naming both digests. With Options.AllowOverwrite the tag is not
+// resolved and the push replaces whatever it points at.
+func PushIdempotent(
+	ctx context.Context,
+	logger *slog.Logger,
+	repoRef string,
+	artifact Artifact,
+	opts Options,
+) (Outcome, string, error) {
+	if artifact.Tag == "" {
+		return 0, "", errors.New("a tag is required to push")
+	}
+
+	want, err := ManifestDigest(artifact)
+	if err != nil {
+		return 0, "", err
+	}
+
+	if !opts.AllowOverwrite {
+		existing, found, err := Resolve(ctx, repoRef, artifact.Tag, opts)
+		if err != nil {
+			return 0, "", err
+		}
+
+		if found {
+			if existing != want {
+				return 0, "", fmt.Errorf("%s:%s already exists with manifest digest %s; this content has %s (tags are immutable: use a new version)",
+					repoRef, artifact.Tag, existing, want)
+			}
+
+			return AlreadyPresent, want, nil
+		}
+	}
+
+	res, err := PushWithOptions(ctx, logger, repoRef, artifact, opts)
+	if err != nil {
+		return 0, "", err
+	}
+
+	if res.Digest != want {
+		return 0, "", fmt.Errorf("pushed digest %s differs from the computed %s", res.Digest, want)
+	}
+
+	return Pushed, res.Digest, nil
 }
 
 // Resolve returns the manifest digest the tag currently points at in repoRef
