@@ -33,18 +33,24 @@ ocictl chart goreleaser-manifest --goreleaser-dist <dir> [--images a,b] [-o <fil
 ocictl chart package  --chart <dir> (--version <ver> | --manifest <file>)
                       [--app-version <ver>] [--require-image-digests] [--output <dir>]
 ocictl chart push     --tgz <file> --registry <url> --repository <path>
-                      --name <name> --version <ver> [--profile <aws>]
+                      --name <name> --version <ver> [--profile <aws>] [--allow-overwrite]
 ocictl crd build      --config <crdctl.yaml>
 ocictl crd publish    --config <crdctl.yaml> --registry <url> --repository <path> [--profile <aws>]
+                      [--allow-overwrite]
 ocictl sourcemaps push  --maps <dir> [--include <pattern>...] [--dry-run] [--profile <aws>]
                         ( --goreleaser-dist <dir> --image <name> [--app <name>] [--repository-template <tpl>]
-                        | --repository <host/path> )  [--version <ver>]
+                        | --repository <host/path> )  [--version <ver>] [--allow-overwrite]
 ocictl sourcemaps serve --config <file>
 ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
+
+`chart push`, `crd publish`, `sourcemaps push` and `static push` are idempotent:
+an existing tag with the same manifest digest is left alone (exit 0), one with
+a different digest is an error naming both digests. `--allow-overwrite` (not on
+`static push`) restores replacing the tag.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

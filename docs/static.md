@@ -87,6 +87,12 @@ re-run would fail on the second push. `static push` resolves the tag first:
 | present, same manifest digest | nothing written; exit 0; prints `already present: <repo>:<tag>@<manifest digest>` |
 | present, different manifest digest | exit 1, naming both digests; the content changed under a released version, so cut a new version |
 
+`chart push`, `crd publish` and `sourcemaps push` behave the same way (their
+stdout is unchanged: `chart push` prints `already present: <ref> (digest: <digest>)`
+instead of `pushed: …`; `sourcemaps push` prints the same line and logs
+`already present` on stderr). They take `--allow-overwrite` for the old
+behaviour of replacing a tag whatever it holds; `static push` has no such flag.
+
 ## Reproducibility caveats
 
 The layer is gzip output, and the compressed bytes come from Go's

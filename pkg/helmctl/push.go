@@ -34,6 +34,13 @@ type (
 		// Created, when non-zero, becomes the manifest's
 		// org.opencontainers.image.created (see ocipush.ResolveCreated).
 		Created time.Time
+		// AllowOverwrite lets the push replace an existing tag that holds
+		// different content. The default refuses it; the same content is
+		// always a no-op.
+		AllowOverwrite bool
+		// RegistryOptions tunes the registry connection (plain HTTP and a
+		// credential source for tests). AWSProfile above fills its AWSProfile.
+		RegistryOptions ocipush.Options
 		// Meta holds chart metadata for the OCI config blob.
 		Meta ChartMeta
 	}
@@ -44,6 +51,8 @@ type (
 		Ref string
 		// Digest is the manifest digest.
 		Digest string
+		// Outcome says whether the tag was written or already held this chart.
+		Outcome ocipush.Outcome
 	}
 
 	// ChartMeta holds Chart.yaml metadata used for the OCI config blob and annotations.
@@ -69,6 +78,10 @@ type (
 
 // Push normalizes the chart .tgz for determinism, then pushes to an OCI registry
 // using ORAS (not `helm push`) to produce a reproducible manifest digest.
+//
+// The push is idempotent (see ocipush.PushIdempotent): an existing tag with the
+// same manifest digest is left alone, one with a different digest is an error
+// unless PushConfig.AllowOverwrite is set.
 //
 // Determinism guarantees:
 //   - tar entries sorted alphabetically, timestamps normalized to epoch 0
@@ -115,14 +128,19 @@ func Push(ctx context.Context, logger *slog.Logger, cfg PushConfig) (*PushResult
 		Created:         cfg.Created,
 	}
 
-	result, err := ocipush.Push(ctx, logger, repoRef, artifact, cfg.AWSProfile)
+	opts := cfg.RegistryOptions
+	opts.AWSProfile = cfg.AWSProfile
+	opts.AllowOverwrite = cfg.AllowOverwrite
+
+	outcome, dgst, err := ocipush.PushIdempotent(ctx, logger, repoRef, artifact, opts)
 	if err != nil {
 		return nil, fmt.Errorf("push chart: %w", err)
 	}
 
 	return &PushResult{
-		Ref:    fmt.Sprintf("%s:%s", repoRef, cfg.Meta.Version),
-		Digest: result.Digest,
+		Ref:     fmt.Sprintf("%s:%s", repoRef, cfg.Meta.Version),
+		Digest:  dgst,
+		Outcome: outcome,
 	}, nil
 }
 

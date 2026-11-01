@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/truvity/ocictl/pkg/helmctl"
+	"github.com/truvity/ocictl/pkg/ocipush"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -54,6 +55,11 @@ type (
 		// Created, when non-zero, becomes the chart manifest's
 		// org.opencontainers.image.created (see ocipush.ResolveCreated).
 		Created time.Time
+		// AllowOverwrite lets the push replace an existing tag that holds
+		// different content (default: refuse; the same content is a no-op).
+		AllowOverwrite bool
+		// RegistryOptions tunes the registry connection (tests only).
+		RegistryOptions ocipush.Options
 	}
 
 	// githubContentEntry represents a file entry from the GitHub Contents API.
@@ -166,6 +172,11 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		return fmt.Errorf("build: %w", err)
 	}
 
+	return packAndPush(ctx, logger, cfg, buildResult)
+}
+
+// packAndPush packages a built chart and pushes it (the second half of Publish).
+func packAndPush(ctx context.Context, logger *slog.Logger, cfg PublishConfig, buildResult *BuildResult) error {
 	// Package the chart.
 	repoRoot := resolveRepoRoot(cfg.ConfigPath)
 	outputDir := filepath.Join(repoRoot, "dist", "crdctl")
@@ -186,6 +197,9 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		Repository: cfg.Repository,
 		AWSProfile: cfg.AWSProfile,
 		Created:    cfg.Created,
+
+		AllowOverwrite:  cfg.AllowOverwrite,
+		RegistryOptions: cfg.RegistryOptions,
 		Meta: helmctl.ChartMeta{
 			Name:        buildResult.Name,
 			Version:     buildResult.Version,
@@ -199,7 +213,12 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		return fmt.Errorf("push: %w", err)
 	}
 
-	logger.InfoContext(ctx, "published CRD chart",
+	msg := "published CRD chart"
+	if pushResult.Outcome == ocipush.AlreadyPresent {
+		msg = "CRD chart already present"
+	}
+
+	logger.InfoContext(ctx, msg,
 		slog.String("name", buildResult.Name),
 		slog.String("version", buildResult.Version),
 		slog.String("ref", pushResult.Ref),

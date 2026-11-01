@@ -43,18 +43,21 @@ func ManifestDigest(artifact ocipush.Artifact) (string, error) {
 
 // Push pushes the artifact to repository (host/path, no tag) under its
 // version tag, using pkg/ocipush's registry authentication unless opts
-// overrides it.
+// overrides it. The push is idempotent (see [ocipush.PushIdempotent]): the
+// same content under an existing tag is left alone, different content is an
+// error unless opts.AllowOverwrite is set. It returns what was done and the
+// manifest digest.
 func Push(
 	ctx context.Context,
 	logger *slog.Logger,
 	repository string,
 	artifact ocipush.Artifact,
 	opts ocipush.Options,
-) (string, error) {
-	res, err := ocipush.PushWithOptions(ctx, logger, repository, artifact, opts)
+) (ocipush.Outcome, string, error) {
+	outcome, dgst, err := ocipush.PushIdempotent(ctx, logger, repository, artifact, opts)
 	if err != nil {
-		return "", fmt.Errorf("push source maps: %w", err)
+		return 0, "", fmt.Errorf("push source maps: %w", err)
 	}
 
-	return res.Digest, nil
+	return outcome, dgst, nil
 }
