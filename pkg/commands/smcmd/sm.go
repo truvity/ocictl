@@ -20,6 +20,12 @@ import (
 	"github.com/truvity/ocictl/pkg/sourcemaps"
 )
 
+// RegistryOptions maps --profile to the registry options of a push. Tests
+// replace it to talk plain HTTP to a fake registry; nothing else should.
+var RegistryOptions = func(profile string) ocipush.Options {
+	return ocipush.Options{AWSProfile: profile}
+}
+
 // Commands returns push and serve. version is the binary version, logged by
 // serve.
 func Commands(version string) []*cli.Command {
@@ -45,6 +51,7 @@ func Commands(version string) []*cli.Command {
 				&cli.StringFlag{Name: "version", Usage: "Release version (default: the one in --goreleaser-dist)"},
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
+				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
 				&cli.BoolFlag{Name: "dry-run", Usage: "Pack and print the manifest digest; push nothing"},
 			},
 			Action: runPush,
@@ -96,9 +103,16 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	pushed, err := sourcemaps.Push(ctx, logger, repository, artifact, ocipush.Options{AWSProfile: cmd.String("profile")})
+	opts := RegistryOptions(cmd.String("profile"))
+	opts.AllowOverwrite = cmd.Bool("allow-overwrite")
+
+	outcome, pushed, err := sourcemaps.Push(ctx, logger, repository, artifact, opts)
 	if err != nil {
 		return err
+	}
+
+	if outcome == ocipush.AlreadyPresent {
+		logger.InfoContext(ctx, "already present: nothing pushed", slog.String("ref", ref), slog.String("digest", pushed))
 	}
 
 	if pushed != manifestDigest {

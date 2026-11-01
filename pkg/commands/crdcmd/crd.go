@@ -44,6 +44,7 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "repository", Usage: "Chart path in registry", Required: true},
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
+				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
 			},
 			Action: func(ctx context.Context, cmd *cli.Command) error {
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
@@ -57,6 +58,8 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					Repository: cmd.String("repository"),
 					AWSProfile: cmd.String("profile"),
 					Created:    created,
+
+					AllowOverwrite: cmd.Bool("allow-overwrite"),
 				})
 			},
 		},

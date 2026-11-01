@@ -213,9 +213,9 @@ func TestPushToRegistry(t *testing.T) {
 	opts := ocipush.Options{PlainHTTP: true, Credential: anonymous}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	digest, err := sourcemaps.Push(context.Background(), logger, repo, art, opts)
-	if err != nil {
-		t.Fatal(err)
+	outcome, digest, err := sourcemaps.Push(context.Background(), logger, repo, art, opts)
+	if err != nil || outcome != ocipush.Pushed {
+		t.Fatalf("first push: %v %v", outcome, err)
 	}
 
 	want, _ := sourcemaps.ManifestDigest(art)
@@ -223,9 +223,15 @@ func TestPushToRegistry(t *testing.T) {
 		t.Fatalf("pushed %s, computed %s", digest, want)
 	}
 
-	// Pushing again yields the same digest.
-	if again, err := sourcemaps.Push(context.Background(), logger, repo, art, opts); err != nil || again != digest {
-		t.Fatalf("second push: %s, %v", again, err)
+	// Pushing again yields the same digest and writes nothing.
+	puts := reg.Count("PUT")
+
+	if outcome, again, err := sourcemaps.Push(context.Background(), logger, repo, art, opts); err != nil || again != digest || outcome != ocipush.AlreadyPresent {
+		t.Fatalf("second push: %v %s, %v", outcome, again, err)
+	}
+
+	if reg.Count("PUT") != puts {
+		t.Fatal("an already-present push wrote to the registry")
 	}
 
 	// Read the manifest back from the registry under the sanitised tag.

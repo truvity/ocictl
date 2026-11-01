@@ -3,6 +3,20 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Changed
+
+- **Breaking: `chart push`, `crd publish` and `sourcemaps push` refuse to
+  overwrite a tag with different content.** They resolve the tag first, as
+  `static push` already did: absent, push; present with the same manifest
+  digest, write nothing and exit 0 (`chart push` prints `already present: …`);
+  present with another digest, exit 1 naming both digests. Re-running a release
+  job that rebuilt its inputs no longer silently replaces a published chart.
+  Adoption step: nothing for a pipeline that never re-pushes different content;
+  a caller that relies on replacing a tag passes `--allow-overwrite` for the old
+  behaviour.
+
 ## v0.10.3
 
 - Dependency updates.

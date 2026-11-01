@@ -16,6 +16,12 @@ import (
 	"github.com/truvity/ocictl/pkg/ocipush"
 )
 
+// RegistryOptions maps --profile to the registry options of a push. Tests
+// replace it to talk plain HTTP to a fake registry; nothing else should.
+var RegistryOptions = func(profile string) ocipush.Options {
+	return ocipush.Options{AWSProfile: profile}
+}
+
 // Commands returns goreleaser-manifest, package and push.
 func Commands(logger *slog.Logger) []*cli.Command {
 	return []*cli.Command{
@@ -123,6 +129,7 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "name", Usage: "Chart name (for OCI config blob)", Required: true},
 				&cli.StringFlag{Name: "version", Usage: "Chart version (for OCI tag + config)", Required: true},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
+				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
 			},
 			Action: func(ctx context.Context, cmd *cli.Command) error {
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
@@ -136,6 +143,9 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					Repository: cmd.String("repository"),
 					AWSProfile: cmd.String("profile"),
 					Created:    created,
+
+					AllowOverwrite:  cmd.Bool("allow-overwrite"),
+					RegistryOptions: RegistryOptions(cmd.String("profile")),
 					Meta: helmctl.ChartMeta{
 						Name:       cmd.String("name"),
 						Version:    cmd.String("version"),
@@ -148,7 +158,12 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					return err
 				}
 
-				_, _ = fmt.Fprintf(os.Stdout, "pushed: %s (digest: %s)\n", result.Ref, result.Digest)
+				verb := "pushed"
+				if result.Outcome == ocipush.AlreadyPresent {
+					verb = "already present"
+				}
+
+				_, _ = fmt.Fprintf(os.Stdout, "%s: %s (digest: %s)\n", verb, result.Ref, result.Digest)
 
 				return nil
 			},

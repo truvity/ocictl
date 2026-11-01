@@ -185,17 +185,17 @@ func Describe(art ocipush.Artifact) (Digests, error) {
 }
 
 // Outcome says what Push did.
-type Outcome int
+type Outcome = ocipush.Outcome
 
 const (
 	// Pushed means the tag was absent and has been written.
-	Pushed Outcome = iota
+	Pushed = ocipush.Pushed
 	// AlreadyPresent means the tag already pointed at this exact manifest.
-	AlreadyPresent
+	AlreadyPresent = ocipush.AlreadyPresent
 )
 
 // Push publishes the artifact to repository (host/path, no tag), idempotently
-// against immutable registries: the tag is resolved first. Absent: push.
+// against immutable registries: see [ocipush.PushIdempotent]. Absent: push.
 // Present with the same manifest digest: nothing is written and
 // AlreadyPresent is returned. Present with another digest: an error naming
 // both digests.
@@ -206,37 +206,5 @@ func Push(
 	art ocipush.Artifact,
 	opts ocipush.Options,
 ) (Outcome, string, error) {
-	if art.Tag == "" {
-		return 0, "", fmt.Errorf("a tag is required to push")
-	}
-
-	d, err := Describe(art)
-	if err != nil {
-		return 0, "", err
-	}
-
-	existing, found, err := ocipush.Resolve(ctx, repository, art.Tag, opts)
-	if err != nil {
-		return 0, "", err
-	}
-
-	if found {
-		if existing != d.Manifest {
-			return 0, "", fmt.Errorf("%s:%s already exists with manifest digest %s; this content has %s (tags are immutable: use a new version)",
-				repository, art.Tag, existing, d.Manifest)
-		}
-
-		return AlreadyPresent, d.Manifest, nil
-	}
-
-	res, err := ocipush.PushWithOptions(ctx, logger, repository, art, opts)
-	if err != nil {
-		return 0, "", fmt.Errorf("push static: %w", err)
-	}
-
-	if res.Digest != d.Manifest {
-		return 0, "", fmt.Errorf("pushed digest %s differs from the computed %s", res.Digest, d.Manifest)
-	}
-
-	return Pushed, res.Digest, nil
+	return ocipush.PushIdempotent(ctx, logger, repository, art, opts)
 }
