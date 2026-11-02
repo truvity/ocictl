@@ -6,11 +6,13 @@ package crdcmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/pushout"
 	"github.com/truvity/ocictl/pkg/crdctl"
 	"github.com/truvity/ocictl/pkg/ocipush"
 )
@@ -38,26 +40,36 @@ func Commands(logger *slog.Logger) []*cli.Command {
 		{
 			Name:  "publish",
 			Usage: "Fetch CRDs + package + push to OCI registry (full pipeline)",
-			Flags: []cli.Flag{
+			Flags: append([]cli.Flag{
 				&cli.StringFlag{Name: "config", Usage: "Path to crdctl.yaml", Required: true},
 				&cli.StringFlag{Name: "registry", Usage: "OCI registry URL", Required: true},
 				&cli.StringFlag{Name: "repository", Usage: "Chart path in registry", Required: true},
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
-			},
+			}, pushout.Flags()...),
 			Action: func(ctx context.Context, cmd *cli.Command) error {
+				if err := pushout.Validate(cmd); err != nil {
+					return err
+				}
+
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
 				if err != nil {
 					return err
 				}
 
-				return crdctl.Publish(ctx, logger, crdctl.PublishConfig{
+				result, err := crdctl.Publish(ctx, logger, crdctl.PublishConfig{
 					ConfigPath: cmd.String("config"),
 					Registry:   cmd.String("registry"),
 					Repository: cmd.String("repository"),
 					AWSProfile: cmd.String("profile"),
 					Created:    created,
 				})
+				if err != nil {
+					return err
+				}
+
+				// Text output stays empty, as it always was; the log line carries it.
+				return pushout.Emit(os.Stdout, cmd, pushout.Chart(result, pushout.StatusPushed), func(io.Writer) error { return nil })
 			},
 		},
 	}

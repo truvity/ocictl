@@ -3,6 +3,18 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Added
+
+- **Machine-readable results.** `chart push`, `crd publish`, `sourcemaps push`,
+  `static push` and `digest` take `--output text|json` and `--digest-file <path>`
+  (the bare manifest digest and a newline); the push commands also take
+  `--github-output <prefix>`, which appends `<prefix>digest=` and `<prefix>ref=`
+  to `$GITHUB_OUTPUT`. The JSON fields are `ref`, `repository`, `tag`, `digest`,
+  `status`, `artifactType` and `mediaType`; see AGENTS.md. Without the flags the
+  output is unchanged.
+
 ## v0.10.3
 
 - Dependency updates.

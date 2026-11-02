@@ -160,10 +160,11 @@ func Build(ctx context.Context, logger *slog.Logger, configPath string) (*BuildR
 }
 
 // Publish runs the full pipeline: fetch CRDs → build chart → package → push to OCI registry.
-func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error {
+// It returns what was pushed.
+func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) (*helmctl.PushResult, error) {
 	buildResult, err := Build(ctx, logger, cfg.ConfigPath)
 	if err != nil {
-		return fmt.Errorf("build: %w", err)
+		return nil, fmt.Errorf("build: %w", err)
 	}
 
 	// Package the chart.
@@ -176,7 +177,7 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		OutputDir: outputDir,
 	})
 	if err != nil {
-		return fmt.Errorf("package: %w", err)
+		return nil, fmt.Errorf("package: %w", err)
 	}
 
 	// Push to registry.
@@ -196,7 +197,7 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("push: %w", err)
+		return nil, fmt.Errorf("push: %w", err)
 	}
 
 	logger.InfoContext(ctx, "published CRD chart",
@@ -206,7 +207,7 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 		slog.String("digest", pushResult.Digest),
 	)
 
-	return nil
+	return pushResult, nil
 }
 
 // fetchAllCRDs downloads CRDs from all configured paths and concatenates them.
