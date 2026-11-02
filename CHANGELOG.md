@@ -3,6 +3,22 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Changed
+
+- **Layer compression no longer depends on the Go toolchain.** All layers are
+  compressed with `github.com/klauspost/compress/gzip` at level 9, pinned in
+  `go.mod`, instead of the standard library's `compress/gzip`, so a Go
+  toolchain bump cannot change a layer or manifest digest. **Digests change
+  once, here:** chart layers are always affected (they were compressed at the
+  standard library's default level, now level 9); static and source-map layers
+  are byte-identical to before for the content tested but may differ for other
+  content. Upgrade rule: a tag published by an older ocictl is reported as
+  "different manifest digest" when the same content is pushed again; publish a
+  new version, or check the content and leave the tag. `just golden` (in CI)
+  runs the golden digests under two toolchains.
+
 ## v0.10.3
 
 - Dependency updates.

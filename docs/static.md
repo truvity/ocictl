@@ -87,20 +87,24 @@ re-run would fail on the second push. `static push` resolves the tag first:
 | present, same manifest digest | nothing written; exit 0; prints `already present: <repo>:<tag>@<manifest digest>` |
 | present, different manifest digest | exit 1, naming both digests; the content changed under a released version, so cut a new version |
 
-## Reproducibility caveats
+## Reproducibility
 
-The layer is gzip output, and the compressed bytes come from Go's
-`compress/flate`. Identical content gives identical digests with the same Go
-toolchain, but **a Go toolchain bump may change the layer digest** (and so
-the manifest digest) for unchanged content. Consequences:
+Every layer ocictl publishes (static, source maps and chart) is compressed by
+`github.com/klauspost/compress/gzip` at level 9 (`layer.NewGzipWriter`), not by
+the standard library, whose `compress/flate` output is not a promise: a Go
+release may change the bytes for unchanged content. The module is pinned in
+`go.mod`, so **a Go toolchain bump does not change a digest**; moving that
+dependency may, and says so in the CHANGELOG.
 
-- `TestGoldenDigests` in `pkg/static` pins the digests of a fixed tree for
-  both shapes, so a toolchain bump that changes compression fails CI here
-  instead of silently changing published digests. Update the constants
-  deliberately, in the same change as the toolchain bump.
-- With a tag already published by an older ocictl, re-running a release with a
-  newer one can report the "different manifest digest" error for unchanged
-  content. That is the guard working; publish under a new version.
+- `TestGoldenDigests` and its siblings in `pkg/static`, `TestGzipIsPinned` in
+  `pkg/layer` and `TestGoldenNormalizeTgz` in `pkg/helmctl` pin the digests. CI
+  runs them under the oldest toolchain `go.mod` allows and under the one it
+  pins (`just golden`), so a digest that depends on the toolchain fails there.
+  Update the constants only in the same change that moves the dependency.
+- A tag published by an older ocictl (before v0.11.0 for charts, whose layers
+  used the standard library's default level) can report the "different manifest
+  digest" error when the same content is pushed again. That is the guard working;
+  publish under a new version.
 - The `diff_id` (digest of the uncompressed tar) does not depend on the
   compressor.
 

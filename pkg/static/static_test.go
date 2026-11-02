@@ -22,9 +22,11 @@ import (
 )
 
 // Golden digests of fixedTree. They pin the whole chain: tar layout, gzip
-// header, and Go's compress/flate output. If a Go toolchain bump changes
-// them, the layer bytes changed, not the content: see docs/static.md before
-// updating, and re-publish nothing under an existing tag.
+// header, and the pinned compressor (github.com/klauspost/compress/gzip, see
+// layer.NewGzipWriter). A Go toolchain bump must not move them (CI runs them
+// under two toolchains: just golden); moving the compressor dependency may:
+// see docs/static.md before updating, and re-publish nothing under an
+// existing tag.
 const (
 	goldenLayer            = "sha256:eae820d044ac66753d0eda69fdcebd9723b0450e758c5f34018800c8928dbf40"
 	goldenArtifactManifest = "sha256:857fa6d31e29cefac37a28fe07710824ec5512dbe33ed577a18175b56891bac1"

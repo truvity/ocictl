@@ -8,6 +8,8 @@ import (
 	"io"
 	"sort"
 	"time"
+
+	"github.com/truvity/ocictl/pkg/layer"
 )
 
 // NormalizeTgz repacks a gzipped tarball deterministically: entries sorted
@@ -63,7 +65,7 @@ func NormalizeTgz(origData []byte) ([]byte, error) {
 
 	var buf bytes.Buffer
 
-	gzWriter := gzip.NewWriter(&buf)
+	gzWriter := layer.NewGzipWriter(&buf)
 	gzWriter.ModTime = epoch
 	tarWriter := tar.NewWriter(gzWriter)
 
