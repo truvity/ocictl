@@ -7,6 +7,7 @@ package fakeregistry
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,19 @@ type Registry struct {
 	requests  []string
 	user, pw  string
 	failWith  int
+
+	referrersAPI bool               // serve the OCI 1.1 referrers API
+	referrers    map[string][]entry // name:subject digest -> referrer descriptors
+	latency      time.Duration      // delay of every manifest GET
+}
+
+// entry is a referrer descriptor as the referrers API lists it.
+type entry struct {
+	MediaType    string            `json:"mediaType"`
+	Digest       string            `json:"digest"`
+	Size         int64             `json:"size"`
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
 }
 
 type manifest struct {
@@ -34,7 +48,7 @@ type manifest struct {
 
 // New starts a registry. A non-empty user demands HTTP Basic credentials.
 func New(user, password string) *Registry {
-	r := &Registry{blobs: map[string][]byte{}, manifests: map[string]manifest{}, user: user, pw: password}
+	r := &Registry{blobs: map[string][]byte{}, manifests: map[string]manifest{}, referrers: map[string][]entry{}, user: user, pw: password}
 	r.Server = httptest.NewServer(http.HandlerFunc(r.serve))
 
 	return r
@@ -90,6 +104,26 @@ func (r *Registry) SetCredentials(user, password string) {
 	r.user, r.pw = user, password
 }
 
+// SetReferrersAPI turns the OCI 1.1 referrers API on or off. Off (the default)
+// behaves like GHCR: GET /v2/<name>/referrers/<digest> answers 404, so clients
+// fall back to the sha256-<hex> tag schema. On, a pushed manifest with a
+// subject is listed by the API and the push answers with OCI-Subject.
+func (r *Registry) SetReferrersAPI(on bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.referrersAPI = on
+}
+
+// SetManifestLatency delays every manifest GET, to widen the window between a
+// client's read and its write.
+func (r *Registry) SetManifestLatency(d time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.latency = d
+}
+
 // FailWith makes every manifest request answer with status (0 stops).
 func (r *Registry) FailWith(status int) {
 	r.mu.Lock()
@@ -137,6 +171,9 @@ func (r *Registry) serve(w http.ResponseWriter, req *http.Request) {
 	switch {
 	case path == "":
 		w.WriteHeader(http.StatusOK)
+	case strings.Contains(path, "/referrers/"):
+		name, subject, _ := strings.Cut(path, "/referrers/")
+		r.listReferrers(w, req, name, subject)
 	case strings.Contains(path, "/manifests/"):
 		name, ref, _ := strings.Cut(path, "/manifests/")
 		r.manifest(w, req, name, ref)
@@ -156,10 +193,18 @@ func (r *Registry) serve(w http.ResponseWriter, req *http.Request) {
 
 func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, name, ref string) {
 	r.mu.Lock()
+	failWith, latency := r.failWith, r.latency
+	r.mu.Unlock()
+
+	if latency > 0 && req.Method != http.MethodPut {
+		time.Sleep(latency)
+	}
+
+	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.failWith != 0 {
-		w.WriteHeader(r.failWith)
+	if failWith != 0 {
+		w.WriteHeader(failWith)
 		return
 	}
 
@@ -169,6 +214,11 @@ func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, name, ref 
 		m := manifest{mediaType: req.Header.Get("Content-Type"), body: body}
 		r.manifests[name+":"+d] = m
 		r.manifests[name+":"+ref] = m
+
+		if subject := r.indexReferrer(name, d, m); subject != "" {
+			w.Header().Set("OCI-Subject", subject)
+		}
+
 		w.Header().Set("Docker-Content-Digest", d)
 		w.WriteHeader(http.StatusCreated)
 
@@ -186,6 +236,79 @@ func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, name, ref 
 	w.Header().Set("Content-Type", m.mediaType)
 	w.Header().Set("Docker-Content-Digest", Digest(m.body))
 	http.ServeContent(w, req, "", timeZero, strings.NewReader(string(m.body)))
+}
+
+// indexReferrer records a pushed manifest that has a subject, when the
+// referrers API is on, and returns that subject's digest ("" otherwise).
+// The caller holds r.mu.
+func (r *Registry) indexReferrer(name, digest string, m manifest) string {
+	if !r.referrersAPI {
+		return ""
+	}
+
+	var doc struct {
+		ArtifactType string `json:"artifactType"`
+		Config       struct {
+			MediaType string `json:"mediaType"`
+		} `json:"config"`
+		Subject *struct {
+			Digest string `json:"digest"`
+		} `json:"subject"`
+		Annotations map[string]string `json:"annotations"`
+	}
+
+	if json.Unmarshal(m.body, &doc) != nil || doc.Subject == nil {
+		return ""
+	}
+
+	e := entry{MediaType: m.mediaType, Digest: digest, Size: int64(len(m.body)), ArtifactType: doc.ArtifactType, Annotations: doc.Annotations}
+	if e.ArtifactType == "" {
+		e.ArtifactType = doc.Config.MediaType
+	}
+
+	key := name + ":" + doc.Subject.Digest
+
+	for _, x := range r.referrers[key] {
+		if x.Digest == digest {
+			return doc.Subject.Digest
+		}
+	}
+
+	r.referrers[key] = append(r.referrers[key], e)
+
+	return doc.Subject.Digest
+}
+
+// listReferrers serves GET /v2/<name>/referrers/<digest>[?artifactType=].
+func (r *Registry) listReferrers(w http.ResponseWriter, req *http.Request, name, subject string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if !r.referrersAPI {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"errors":[{"code":"MANIFEST_UNKNOWN","message":"unknown"}]}`)
+
+		return
+	}
+
+	want := req.URL.Query().Get("artifactType")
+	list := []entry{}
+
+	for _, e := range r.referrers[name+":"+subject] {
+		if want == "" || e.ArtifactType == want {
+			list = append(list, e)
+		}
+	}
+
+	body, _ := json.Marshal(map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json", "manifests": list})
+
+	w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+
+	if want != "" {
+		w.Header().Set("OCI-Filters-Applied", "artifactType")
+	}
+
+	_, _ = w.Write(body)
 }
 
 func (r *Registry) upload(w http.ResponseWriter, req *http.Request) {

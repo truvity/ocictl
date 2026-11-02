@@ -21,6 +21,12 @@ Release notes for earlier versions are generated from commit history on the
   <file> [--platforms ...]` resolve every `images.*` entry in its registry and,
   for each named platform, require an image index that lists it. Failures name
   the image key and reference. Read access only; no platform is assumed.
+- **`ocictl attach` and `ocictl referrers`.** Attach files to an existing manifest
+  (by digest) as an OCI referrer, and list the referrers of a manifest, on a
+  registry with the OCI 1.1 referrers API and on one without it (GHCR) through
+  the `sha256-<digest>` tag schema, written with a read-modify-write that is read
+  back and retried. `pkg/ocipush` gains `Artifact.Subject`, `Artifact.Blobs`,
+  `Attach` and `Referrers`. See `docs/referrers.md`.
 
 ### Changed
 
