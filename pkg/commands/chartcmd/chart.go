@@ -12,6 +12,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/annot"
 	"github.com/truvity/ocictl/pkg/commands/pushout"
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/helmctl"
@@ -132,13 +133,18 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "version", Usage: "Chart version (for OCI tag + config)", Required: true},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
-			}, pushout.Flags()...),
+			}, append(annot.Flags(), pushout.Flags()...)...),
 			Action: func(ctx context.Context, cmd *cli.Command) error {
 				if err := pushout.Validate(cmd); err != nil {
 					return err
 				}
 
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
+				if err != nil {
+					return err
+				}
+
+				annotations, err := annot.Resolve(ctx, cmd)
 				if err != nil {
 					return err
 				}
@@ -152,6 +158,7 @@ func Commands(logger *slog.Logger) []*cli.Command {
 
 					AllowOverwrite:  cmd.Bool("allow-overwrite"),
 					RegistryOptions: RegistryOptions(cmd.String("profile")),
+					Annotations:     annotations,
 					Meta: helmctl.ChartMeta{
 						Name:       cmd.String("name"),
 						Version:    cmd.String("version"),

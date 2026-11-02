@@ -41,6 +41,10 @@ type (
 		// RegistryOptions tunes the registry connection (plain HTTP and a
 		// credential source for tests). AWSProfile above fills its AWSProfile.
 		RegistryOptions ocipush.Options
+		// Annotations are extra manifest annotations. They are applied over
+		// the chart's own title, version and description, so a caller can
+		// override those too.
+		Annotations map[string]string
 		// Meta holds chart metadata for the OCI config blob.
 		Meta ChartMeta
 	}
@@ -94,44 +98,12 @@ type (
 //     PushConfig.Created is set from the source
 //   - Same chart content → same layer digest → same manifest digest
 func Push(ctx context.Context, logger *slog.Logger, cfg PushConfig) (*PushResult, error) {
-	layerData, err := normalizeAndRead(cfg.TgzPath)
+	artifact, err := ChartArtifact(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("normalize chart: %w", err)
-	}
-
-	config := helmChartConfig{
-		Name:        cfg.Meta.Name,
-		Version:     cfg.Meta.Version,
-		Description: cfg.Meta.Description,
-		APIVersion:  cfg.Meta.APIVersion,
-		Type:        cfg.Meta.Type,
-		AppVersion:  cfg.Meta.AppVersion,
-	}
-
-	configData, err := json.Marshal(config)
-	if err != nil {
-		return nil, fmt.Errorf("marshal chart config: %w", err)
-	}
-
-	annotations := map[string]string{
-		"org.opencontainers.image.title":   cfg.Meta.Name,
-		"org.opencontainers.image.version": cfg.Meta.Version,
-	}
-	if cfg.Meta.Description != "" {
-		annotations["org.opencontainers.image.description"] = cfg.Meta.Description
+		return nil, err
 	}
 
 	repoRef := fmt.Sprintf("%s/%s", cfg.Registry, cfg.Repository)
-
-	artifact := ocipush.Artifact{
-		Layer:           layerData,
-		LayerMediaType:  helmChartMediaType,
-		Config:          configData,
-		ConfigMediaType: helmConfigMediaType,
-		Tag:             cfg.Meta.Version,
-		Annotations:     annotations,
-		Created:         cfg.Created,
-	}
 
 	opts := cfg.RegistryOptions
 	opts.AWSProfile = cfg.AWSProfile
@@ -149,6 +121,51 @@ func Push(ctx context.Context, logger *slog.Logger, cfg PushConfig) (*PushResult
 		Repository:   repoRef,
 		Tag:          cfg.Meta.Version,
 		ArtifactType: ocipush.EffectiveArtifactType(artifact),
+	}, nil
+}
+
+// ChartArtifact builds the OCI artifact Push would publish for cfg, without
+// contacting a registry.
+func ChartArtifact(cfg PushConfig) (ocipush.Artifact, error) {
+	layerData, err := normalizeAndRead(cfg.TgzPath)
+	if err != nil {
+		return ocipush.Artifact{}, fmt.Errorf("normalize chart: %w", err)
+	}
+
+	config := helmChartConfig{
+		Name:        cfg.Meta.Name,
+		Version:     cfg.Meta.Version,
+		Description: cfg.Meta.Description,
+		APIVersion:  cfg.Meta.APIVersion,
+		Type:        cfg.Meta.Type,
+		AppVersion:  cfg.Meta.AppVersion,
+	}
+
+	configData, err := json.Marshal(config)
+	if err != nil {
+		return ocipush.Artifact{}, fmt.Errorf("marshal chart config: %w", err)
+	}
+
+	annotations := map[string]string{
+		"org.opencontainers.image.title":   cfg.Meta.Name,
+		"org.opencontainers.image.version": cfg.Meta.Version,
+	}
+	if cfg.Meta.Description != "" {
+		annotations["org.opencontainers.image.description"] = cfg.Meta.Description
+	}
+
+	for k, v := range cfg.Annotations {
+		annotations[k] = v
+	}
+
+	return ocipush.Artifact{
+		Layer:           layerData,
+		LayerMediaType:  helmChartMediaType,
+		Config:          configData,
+		ConfigMediaType: helmConfigMediaType,
+		Tag:             cfg.Meta.Version,
+		Annotations:     annotations,
+		Created:         cfg.Created,
 	}, nil
 }
 

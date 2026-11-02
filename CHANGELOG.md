@@ -3,6 +3,20 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## Unreleased
+
+### Added
+
+- **Standard OCI annotations on every push.** `chart push`, `crd publish` and
+  `sourcemaps push` take a repeatable `--annotation k=v` (as `static push` did),
+  and all of them, with `static push` and `digest`, take `--source`,
+  `--revision`, `--licenses`, `--url`, `--documentation` and `--vendor` for the
+  matching `org.opencontainers.image.*` keys, and `--annotations-from-git`
+  (`source` from the `origin` remote with credentials stripped, `revision` from
+  `HEAD`). Nothing is defaulted: without a flag the manifest, and so its digest,
+  is unchanged. A URL value carrying credentials is refused. See
+  `docs/annotations.md`.
+
 ## v0.11.0
 
 ### Added
