@@ -6,11 +6,13 @@ package chartcmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/pushout"
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/helmctl"
 	"github.com/truvity/ocictl/pkg/ocipush"
@@ -121,7 +123,7 @@ func Commands(logger *slog.Logger) []*cli.Command {
 		{
 			Name:  "push",
 			Usage: "Push a packaged chart .tgz to an OCI registry (deterministic, ORAS-based)",
-			Flags: []cli.Flag{
+			Flags: append([]cli.Flag{
 				&cli.StringFlag{Name: "tgz", Usage: "Path to .tgz file", Required: true},
 				&cli.StringFlag{Name: "registry", Usage: "OCI registry URL", Required: true},
 				&cli.StringFlag{Name: "repository", Usage: "Chart path in registry", Required: true},
@@ -130,8 +132,12 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "version", Usage: "Chart version (for OCI tag + config)", Required: true},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
-			},
+			}, pushout.Flags()...),
 			Action: func(ctx context.Context, cmd *cli.Command) error {
+				if err := pushout.Validate(cmd); err != nil {
+					return err
+				}
+
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
 				if err != nil {
 					return err
@@ -158,14 +164,16 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					return err
 				}
 
-				verb := "pushed"
+				verb, status := "pushed", pushout.StatusPushed
 				if result.Outcome == ocipush.AlreadyPresent {
-					verb = "already present"
+					verb, status = "already present", pushout.StatusAlreadyPresent
 				}
 
-				_, _ = fmt.Fprintf(os.Stdout, "%s: %s (digest: %s)\n", verb, result.Ref, result.Digest)
+				return pushout.Emit(os.Stdout, cmd, pushout.Chart(result, status), func(w io.Writer) error {
+					_, err := fmt.Fprintf(w, "%s: %s (digest: %s)\n", verb, result.Ref, result.Digest)
 
-				return nil
+					return err
+				})
 			},
 		},
 	}

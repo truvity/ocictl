@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/pushout"
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/ocipush"
 	"github.com/truvity/ocictl/pkg/smserver"
@@ -33,7 +35,7 @@ func Commands(version string) []*cli.Command {
 		{
 			Name:  "push",
 			Usage: "Pack the .map files of a build into a deterministic OCI artifact and push it under the release version",
-			Flags: []cli.Flag{
+			Flags: append([]cli.Flag{
 				&cli.StringFlag{Name: "maps", Usage: "Directory holding the .map files (searched recursively)", Required: true},
 				&cli.StringSliceFlag{
 					Name:  "include",
@@ -53,7 +55,7 @@ func Commands(version string) []*cli.Command {
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
 				&cli.BoolFlag{Name: "dry-run", Usage: "Pack and print the manifest digest; push nothing"},
-			},
+			}, pushout.Flags()...),
 			Action: runPush,
 		},
 		{
@@ -69,6 +71,10 @@ func Commands(version string) []*cli.Command {
 
 func runPush(ctx context.Context, cmd *cli.Command) error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	if err := pushout.Validate(cmd); err != nil {
+		return err
+	}
 
 	repository, version, err := resolveTarget(cmd)
 	if err != nil {
@@ -98,9 +104,8 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 
 	if cmd.Bool("dry-run") {
 		logger.InfoContext(ctx, "dry run: nothing pushed", slog.Int("files", len(packed.Files)), slog.Int("layerBytes", len(packed.Layer)))
-		_, _ = fmt.Fprintf(os.Stdout, "%s@%s\n", ref, manifestDigest)
 
-		return nil
+		return emit(cmd, pushout.New(repository, artifact, manifestDigest, pushout.StatusDryRun), ref, manifestDigest)
 	}
 
 	opts := RegistryOptions(cmd.String("profile"))
@@ -111,7 +116,10 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	status := pushout.StatusPushed
 	if outcome == ocipush.AlreadyPresent {
+		status = pushout.StatusAlreadyPresent
+
 		logger.InfoContext(ctx, "already present: nothing pushed", slog.String("ref", ref), slog.String("digest", pushed))
 	}
 
@@ -119,9 +127,16 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("pushed digest %s differs from the computed %s", pushed, manifestDigest)
 	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "%s@%s\n", ref, pushed)
+	return emit(cmd, pushout.New(repository, artifact, pushed, status), ref, pushed)
+}
 
-	return nil
+// emit prints ref@digest, as sourcemaps push always has, or the JSON result.
+func emit(cmd *cli.Command, res pushout.Result, ref, digest string) error {
+	return pushout.Emit(os.Stdout, cmd, res, func(w io.Writer) error {
+		_, err := fmt.Fprintf(w, "%s@%s\n", ref, digest)
+
+		return err
+	})
 }
 
 // resolveTarget returns the repository and release version to push.

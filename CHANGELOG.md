@@ -5,6 +5,16 @@ Release notes for earlier versions are generated from commit history on the
 
 ## v0.11.0
 
+### Added
+
+- **Machine-readable results.** `chart push`, `crd publish`, `sourcemaps push`,
+  `static push` and `digest` take `--output text|json` and `--digest-file <path>`
+  (the bare manifest digest and a newline); the push commands also take
+  `--github-output <prefix>`, which appends `<prefix>digest=` and `<prefix>ref=`
+  to `$GITHUB_OUTPUT`. The JSON fields are `ref`, `repository`, `tag`, `digest`,
+  `status`, `artifactType` and `mediaType`; see AGENTS.md. Without the flags the
+  output is unchanged.
+
 ### Changed
 
 - **Breaking: `chart push`, `crd publish` and `sourcemaps push` refuse to

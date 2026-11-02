@@ -53,6 +53,11 @@ type (
 		Digest string
 		// Outcome says whether the tag was written or already held this chart.
 		Outcome ocipush.Outcome
+		// Repository is registry/repository, Tag the pushed tag.
+		Repository, Tag string
+		// ArtifactType is the effective artifact type of the manifest (see
+		// ocipush.EffectiveArtifactType).
+		ArtifactType string
 	}
 
 	// ChartMeta holds Chart.yaml metadata used for the OCI config blob and annotations.
@@ -138,9 +143,12 @@ func Push(ctx context.Context, logger *slog.Logger, cfg PushConfig) (*PushResult
 	}
 
 	return &PushResult{
-		Ref:     fmt.Sprintf("%s:%s", repoRef, cfg.Meta.Version),
-		Digest:  dgst,
-		Outcome: outcome,
+		Ref:          fmt.Sprintf("%s:%s", repoRef, cfg.Meta.Version),
+		Digest:       dgst,
+		Outcome:      outcome,
+		Repository:   repoRef,
+		Tag:          cfg.Meta.Version,
+		ArtifactType: ocipush.EffectiveArtifactType(artifact),
 	}, nil
 }
 
