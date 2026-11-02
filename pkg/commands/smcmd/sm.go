@@ -15,6 +15,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/annot"
 	"github.com/truvity/ocictl/pkg/commands/pushout"
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/ocipush"
@@ -55,7 +56,7 @@ func Commands(version string) []*cli.Command {
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
 				&cli.BoolFlag{Name: "dry-run", Usage: "Pack and print the manifest digest; push nothing"},
-			}, pushout.Flags()...),
+			}, append(annot.Flags(), pushout.Flags()...)...),
 			Action: runPush,
 		},
 		{
@@ -94,6 +95,13 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 	if artifact.Created, err = ocipush.ResolveCreated(cmd.String("created")); err != nil {
 		return err
 	}
+
+	extra, err := annot.Resolve(ctx, cmd)
+	if err != nil {
+		return err
+	}
+
+	artifact.Annotations = annot.Merge(artifact.Annotations, extra)
 
 	manifestDigest, err := sourcemaps.ManifestDigest(artifact)
 	if err != nil {

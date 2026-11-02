@@ -12,6 +12,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/annot"
 	"github.com/truvity/ocictl/pkg/commands/pushout"
 	"github.com/truvity/ocictl/pkg/crdctl"
 	"github.com/truvity/ocictl/pkg/ocipush"
@@ -47,13 +48,18 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "allow-overwrite", Usage: ocipush.AllowOverwriteFlagUsage},
-			}, pushout.Flags()...),
+			}, append(annot.Flags(), pushout.Flags()...)...),
 			Action: func(ctx context.Context, cmd *cli.Command) error {
 				if err := pushout.Validate(cmd); err != nil {
 					return err
 				}
 
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
+				if err != nil {
+					return err
+				}
+
+				annotations, err := annot.Resolve(ctx, cmd)
 				if err != nil {
 					return err
 				}
@@ -66,6 +72,7 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					Created:    created,
 
 					AllowOverwrite: cmd.Bool("allow-overwrite"),
+					Annotations:    annotations,
 				})
 				if err != nil {
 					return err

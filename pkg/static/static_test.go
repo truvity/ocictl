@@ -329,3 +329,42 @@ func TestImageConfigCreated(t *testing.T) {
 		t.Fatalf("config %s", art.Config)
 	}
 }
+
+// The standard OCI annotations are part of the manifest and so of its digest:
+// the layer and image config do not move, the manifest does, and the same
+// annotations always give the same digest.
+const (
+	goldenAnnotatedArtifactManifest = "sha256:e47b37ca8f5468cb9fbc22ca285742ab58a20b0aa1bbec447cf64a2303b2fce3"
+	goldenAnnotatedImageManifest    = "sha256:43c750a3ae1e9b5572a3214f223473b8f1d9ef40cfaedfaf3c8b4bbe952084f4"
+)
+
+var standardAnnotations = map[string]string{
+	"org.opencontainers.image.source":        "https://github.com/example-org/example",
+	"org.opencontainers.image.revision":      "0123456789abcdef0123456789abcdef01234567",
+	"org.opencontainers.image.licenses":      "MIT",
+	"org.opencontainers.image.url":           "https://example.com/",
+	"org.opencontainers.image.documentation": "https://example.com/docs",
+	"org.opencontainers.image.vendor":        "Example",
+}
+
+func TestGoldenDigestsWithAnnotations(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, fixedTree, time.Now())
+
+	a := describe(t, dir, static.Options{Shape: static.ShapeArtifact, Tag: "1.0.0", Annotations: standardAnnotations})
+	i := describe(t, dir, static.Options{Shape: static.ShapeImage, Tag: "1.0.0", Annotations: standardAnnotations})
+
+	t.Logf("artifactManifest=%s imageManifest=%s", a.Manifest, i.Manifest)
+
+	if a.Layer != goldenLayer || i.Config != goldenImageConfig {
+		t.Errorf("annotations moved the layer or the image config: %s / %s", a.Layer, i.Config)
+	}
+
+	if a.Manifest != goldenAnnotatedArtifactManifest || i.Manifest != goldenAnnotatedImageManifest {
+		t.Errorf("annotated manifests %s / %s, want %s / %s", a.Manifest, i.Manifest, goldenAnnotatedArtifactManifest, goldenAnnotatedImageManifest)
+	}
+
+	if a.Manifest == goldenArtifactManifest || i.Manifest == goldenImageManifest {
+		t.Error("annotations are not part of the manifest digest")
+	}
+}

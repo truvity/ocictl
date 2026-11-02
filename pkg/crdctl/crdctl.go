@@ -60,6 +60,8 @@ type (
 		AllowOverwrite bool
 		// RegistryOptions tunes the registry connection (tests only).
 		RegistryOptions ocipush.Options
+		// Annotations are extra manifest annotations of the chart.
+		Annotations map[string]string
 	}
 
 	// githubContentEntry represents a file entry from the GitHub Contents API.
@@ -199,6 +201,7 @@ func packAndPush(ctx context.Context, logger *slog.Logger, cfg PublishConfig, bu
 		AWSProfile: cfg.AWSProfile,
 		Created:    cfg.Created,
 
+		Annotations:     cfg.Annotations,
 		AllowOverwrite:  cfg.AllowOverwrite,
 		RegistryOptions: cfg.RegistryOptions,
 		Meta: helmctl.ChartMeta{
