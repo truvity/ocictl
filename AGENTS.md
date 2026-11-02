@@ -43,8 +43,14 @@ ocictl sourcemaps serve --config <file>
 ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
+ocictl image file-digest <host/path>@<digest> --path <abs path> [--platform <os/arch[/variant]>] [--expect sha256:...] [--profile <aws>]
+ocictl image extract  <host/path>@<digest> --path <abs path> -o <file|-> [--platform <os/arch[/variant]>] [--profile <aws>]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
+
+`image file-digest` and `image extract` ([docs/image-files.md](docs/image-files.md))
+read one file of a remote image's flattened filesystem, honouring whiteouts;
+exit status 2 means the path is not there.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

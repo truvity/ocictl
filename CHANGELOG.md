@@ -3,6 +3,16 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Added
+
+- **`ocictl image file-digest` and `ocictl image extract`.** Print the sha256 of
+  a file in a remote image's flattened filesystem, or write it out, without a
+  daemon: topmost layer wins, whiteouts and opaque directories are honoured, an
+  index needs `--platform`, `--expect` fails on a mismatch, and a path that is
+  not in the image exits with status 2. See `docs/image-files.md`.
+
 ## v0.10.3
 
 - Dependency updates.
