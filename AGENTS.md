@@ -33,7 +33,7 @@ ocictl chart goreleaser-manifest --goreleaser-dist <dir> [--images a,b] [-o <fil
 ocictl chart package  --chart <dir> (--version <ver> | --manifest <file>)
                       [--app-version <ver>] [--require-image-digests] [--output <dir>]
 ocictl chart push     --tgz <file> --registry <url> --repository <path>
-                      --name <name> --version <ver> [--profile <aws>] [--allow-overwrite]
+                      --name <name> --version <ver> [--profile <aws>] [--allow-overwrite] [output flags]
 ocictl crd build      --config <crdctl.yaml>
 ocictl crd publish    --config <crdctl.yaml> --registry <url> --repository <path> [--profile <aws>]
                       [--allow-overwrite]
@@ -45,12 +45,45 @@ ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
+                      [--output text|json] [--digest-file <path>]
+
+[output flags] = [--output text|json] [--digest-file <path>] [--github-output <prefix>]
+                 (chart push, crd publish, sourcemaps push and static push all take them)
 ```
 
 `chart push`, `crd publish`, `sourcemaps push` and `static push` are idempotent:
 an existing tag with the same manifest digest is left alone (exit 0), one with
 a different digest is an error naming both digests. `--allow-overwrite` (not on
 `static push`) restores replacing the tag.
+
+### Machine-readable results
+
+`chart push`, `crd publish`, `sourcemaps push`, `static push` and `digest` take
+`--output text|json` and `--digest-file <path>`; the push commands also take
+`--github-output <prefix>`. Without them the output is what it has always been
+(`crd publish` prints nothing on stdout). Source:
+[`pkg/commands/pushout`](pkg/commands/pushout).
+
+- `--output json` prints one JSON object and a newline on stdout (logs stay on
+  stderr). The push commands print
+
+  ```json
+  {"ref":"<repository>:<tag>@<digest>","repository":"<host/path>","tag":"<tag>","digest":"sha256:<hex>","status":"pushed","artifactType":"<type>","mediaType":"application/vnd.oci.image.manifest.v1+json"}
+  ```
+
+  `status` is `pushed`, `already-present` or, with `--dry-run`, `dry-run`.
+  `artifactType` is the manifest's `artifactType`, else its config media type
+  (a Helm chart: `application/vnd.cncf.helm.config.v1+json`), else empty.
+  `digest` prints `{"digest","layerDigest","configDigest","artifactType","mediaType"}`
+  (`static push --dry-run` prints the same).
+- `--digest-file` writes exactly the manifest digest, `sha256:...`, and a
+  newline.
+- `--github-output <prefix>` with `$GITHUB_OUTPUT` set appends
+  `<prefix>digest=...` and `<prefix>ref=...` to that file (the prefix is used as
+  given, so pass `chart-` or `chart_`); without `$GITHUB_OUTPUT` it warns on
+  stderr and writes nothing.
+
+The shape is pinned by `TestPushResultJSONGolden` in `pkg/commands/app`.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

@@ -80,14 +80,14 @@ func TestPublishIsIdempotent(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx := context.Background()
 
-	if err := crdctl.Publish(ctx, logger, cfg); err != nil {
+	if _, err := crdctl.Publish(ctx, logger, cfg); err != nil {
 		t.Fatal(err)
 	}
 
 	// The same CRDs again: exit 0 and nothing written.
 	puts := reg.Count("PUT")
 
-	if err := crdctl.Publish(ctx, logger, cfg); err != nil {
+	if _, err := crdctl.Publish(ctx, logger, cfg); err != nil {
 		t.Fatalf("second publish: %v", err)
 	}
 
@@ -99,7 +99,7 @@ func TestPublishIsIdempotent(t *testing.T) {
 	changed := cfg
 	changed.ConfigPath = repoWithCRDs(t, "kind: CustomResourceDefinition\nmetadata: {name: changed}\n")
 
-	err := crdctl.Publish(ctx, logger, changed)
+	_, err := crdctl.Publish(ctx, logger, changed)
 	if err == nil || strings.Count(err.Error(), "sha256:") < 2 {
 		t.Fatalf("different content under an existing tag: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestPublishIsIdempotent(t *testing.T) {
 	// AllowOverwrite keeps the old behaviour.
 	changed.AllowOverwrite = true
 
-	if err := crdctl.Publish(ctx, logger, changed); err != nil {
+	if _, err := crdctl.Publish(ctx, logger, changed); err != nil {
 		t.Fatalf("overwrite: %v", err)
 	}
 }

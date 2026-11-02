@@ -270,6 +270,21 @@ func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst strin
 	return desc.Digest.String(), true, nil
 }
 
+// EffectiveArtifactType is the artifactType a registry client lists the
+// artifact under: the manifest's artifactType or, when it has none, its config
+// media type; empty for an empty JSON config.
+func EffectiveArtifactType(artifact Artifact) string {
+	if artifact.ArtifactType != "" {
+		return artifact.ArtifactType
+	}
+
+	if artifact.ConfigMediaType == ocispec.MediaTypeEmptyJSON {
+		return ""
+	}
+
+	return artifact.ConfigMediaType
+}
+
 // BuildManifest constructs a deterministic OCI manifest from an Artifact.
 // Strips org.opencontainers.image.created from Annotations; the annotation is
 // written only from Artifact.Created.
