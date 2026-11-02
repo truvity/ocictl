@@ -43,8 +43,16 @@ ocictl sourcemaps serve --config <file>
 ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
+ocictl attach         --subject <host/path>@<digest> --artifact-type <type> [--media-type <type>]
+                      [--annotation k=v]... [--created <RFC3339>] [--profile <aws>] [--output text|json] <file>...
+ocictl referrers      <host/path>@<digest> [--artifact-type <type>] [--profile <aws>] [--output text|json]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
+
+`attach` and `referrers` ([docs/referrers.md](docs/referrers.md)) work on a
+registry with the OCI 1.1 referrers API and on one without (GHCR): the latter
+uses the `sha256-<digest>` tag schema, with a read-modify-write that is read
+back and retried.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

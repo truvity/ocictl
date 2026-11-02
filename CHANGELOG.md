@@ -3,6 +3,17 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Added
+
+- **`ocictl attach` and `ocictl referrers`.** Attach files to an existing manifest
+  (by digest) as an OCI referrer, and list the referrers of a manifest, on a
+  registry with the OCI 1.1 referrers API and on one without it (GHCR) through
+  the `sha256-<digest>` tag schema, written with a read-modify-write that is read
+  back and retried. `pkg/ocipush` gains `Artifact.Subject`, `Artifact.Blobs`,
+  `Attach` and `Referrers`. See `docs/referrers.md`.
+
 ## v0.10.3
 
 - Dependency updates.

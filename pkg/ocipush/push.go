@@ -58,6 +58,23 @@ type (
 		// in UTC at seconds precision. It must come from the source (see
 		// ResolveCreated), never from the wall clock.
 		Created time.Time
+		// Subject, when set, is written as the manifest's subject: the artifact
+		// is then a referrer of that manifest (see Attach).
+		Subject *ocispec.Descriptor
+		// Blobs, when non-empty, are the manifest's layers, in order, instead
+		// of the single Layer/LayerMediaType pair.
+		Blobs []Blob
+	}
+
+	// Blob is one layer of an artifact that has several.
+	Blob struct {
+		// MediaType is the layer media type.
+		MediaType string
+		// Data is the raw bytes.
+		Data []byte
+		// Annotations are optional layer annotations (for example the
+		// org.opencontainers.image.title of a file).
+		Annotations map[string]string
 	}
 
 	// Options tunes Push beyond the defaults. The zero value is what Push uses.
@@ -104,10 +121,12 @@ func PushWithOptions(
 ) (*PushResult, error) {
 	store := memory.New()
 
-	// Push layer blob.
-	layerDesc := DescriptorFromBytes(artifact.LayerMediaType, artifact.Layer)
-	if err := store.Push(ctx, layerDesc, bytes.NewReader(artifact.Layer)); err != nil {
-		return nil, fmt.Errorf("push layer to store: %w", err)
+	// Push layer blobs.
+	for i, data := range artifact.layerData() {
+		desc := layerDescriptors(artifact)[i]
+		if err := store.Push(ctx, desc, bytes.NewReader(data)); err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
+			return nil, fmt.Errorf("push layer to store: %w", err)
+		}
 	}
 
 	// Push config blob.
@@ -133,19 +152,10 @@ func PushWithOptions(
 	}
 
 	// Configure remote repository with appropriate auth.
-	repo, err := remote.NewRepository(repoRef)
+	repo, err := newRepository(repoRef, opts)
 	if err != nil {
-		return nil, fmt.Errorf("create remote repo %q: %w", repoRef, err)
+		return nil, err
 	}
-
-	repo.PlainHTTP = opts.PlainHTTP
-
-	credential := opts.Credential
-	if credential == nil {
-		credential = resolveCredentials(repoRef, opts.AWSProfile)
-	}
-
-	repo.Client = &auth.Client{Credential: credential}
 
 	// Copy from memory store to remote.
 	_, err = oras.Copy(ctx, store, artifact.Tag, repo, artifact.Tag, oras.DefaultCopyOptions)
@@ -161,13 +171,12 @@ func PushWithOptions(
 	return &PushResult{Digest: manifestDesc.Digest.String()}, nil
 }
 
-// Resolve returns the manifest digest the tag currently points at in repoRef
-// (host/path, no tag). found is false, with a nil error, when the tag does
-// not exist.
-func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst string, found bool, err error) {
+// newRepository opens repoRef (host/path) with the registry options' transport
+// and credentials.
+func newRepository(repoRef string, opts Options) (*remote.Repository, error) {
 	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
-		return "", false, fmt.Errorf("create remote repo %q: %w", repoRef, err)
+		return nil, fmt.Errorf("create remote repo %q: %w", repoRef, err)
 	}
 
 	repo.PlainHTTP = opts.PlainHTTP
@@ -178,6 +187,18 @@ func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst strin
 	}
 
 	repo.Client = &auth.Client{Credential: credential}
+
+	return repo, nil
+}
+
+// Resolve returns the manifest digest the tag currently points at in repoRef
+// (host/path, no tag). found is false, with a nil error, when the tag does
+// not exist.
+func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst string, found bool, err error) {
+	repo, err := newRepository(repoRef, opts)
+	if err != nil {
+		return "", false, err
+	}
 
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
@@ -195,13 +216,13 @@ func Resolve(ctx context.Context, repoRef, tag string, opts Options) (dgst strin
 // Strips org.opencontainers.image.created from Annotations; the annotation is
 // written only from Artifact.Created.
 func BuildManifest(artifact Artifact) ([]byte, error) {
-	layerDesc := DescriptorFromBytes(artifact.LayerMediaType, artifact.Layer)
 	configDesc := DescriptorFromBytes(artifact.ConfigMediaType, artifact.Config)
 
 	manifest := ocispec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
 		Config:    configDesc,
-		Layers:    []ocispec.Descriptor{layerDesc},
+		Layers:    layerDescriptors(artifact),
+		Subject:   artifact.Subject,
 
 		ArtifactType: artifact.ArtifactType,
 	}
@@ -234,6 +255,36 @@ func BuildManifest(artifact Artifact) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// layerData is the content of each layer, in manifest order.
+func (a Artifact) layerData() [][]byte {
+	if len(a.Blobs) == 0 {
+		return [][]byte{a.Layer}
+	}
+
+	out := make([][]byte, len(a.Blobs))
+	for i, b := range a.Blobs {
+		out[i] = b.Data
+	}
+
+	return out
+}
+
+// layerDescriptors are the manifest layers of an artifact: its Blobs, else its
+// single Layer.
+func layerDescriptors(artifact Artifact) []ocispec.Descriptor {
+	if len(artifact.Blobs) == 0 {
+		return []ocispec.Descriptor{DescriptorFromBytes(artifact.LayerMediaType, artifact.Layer)}
+	}
+
+	out := make([]ocispec.Descriptor, len(artifact.Blobs))
+	for i, b := range artifact.Blobs {
+		out[i] = DescriptorFromBytes(b.MediaType, b.Data)
+		out[i].Annotations = b.Annotations
+	}
+
+	return out
 }
 
 // DescriptorFromBytes creates an OCI descriptor from raw data.
