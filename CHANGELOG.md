@@ -32,6 +32,11 @@ Release notes for earlier versions are generated from commit history on the
   read from each image's config (or named), duplicates refused, the index sorted
   by platform, inputs from other repositories copied by digest, and idempotent in
   the manner of `static push`. See `docs/index.md`.
+- **`ocictl image file-digest` and `ocictl image extract`.** Print the sha256 of
+  a file in a remote image's flattened filesystem, or write it out, without a
+  daemon: topmost layer wins, whiteouts and opaque directories are honoured, an
+  index needs `--platform`, `--expect` fails on a mismatch, and a path that is
+  not in the image exits with status 2. See `docs/image-files.md`.
 
 ### Changed
 
