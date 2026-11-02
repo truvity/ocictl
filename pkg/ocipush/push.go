@@ -356,6 +356,23 @@ func resolveCredentials(
 	return dockerCredential
 }
 
+// ReadCredentials selects the credential source for reading from repoRef:
+// like the push credentials, except that ghcr.io works anonymously when
+// GITHUB_TOKEN is unset (public images need no login).
+func ReadCredentials(repoRef, awsProfile string) func(ctx context.Context, hostport string) (auth.Credential, error) {
+	if strings.Contains(repoRef, "ghcr.io") {
+		return func(_ context.Context, _ string) (auth.Credential, error) {
+			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+				return auth.Credential{Username: "token", Password: token}, nil
+			}
+
+			return auth.EmptyCredential, nil
+		}
+	}
+
+	return resolveCredentials(repoRef, awsProfile)
+}
+
 // ghcrCredential returns credentials from the GITHUB_TOKEN env var.
 func ghcrCredential(_ context.Context, _ string) (auth.Credential, error) {
 	token := os.Getenv("GITHUB_TOKEN")

@@ -16,6 +16,11 @@ Release notes for earlier versions are generated from commit history on the
   `HEAD`). Nothing is defaulted: without a flag the manifest, and so its digest,
   is unchanged. A URL value carrying credentials is refused. See
   `docs/annotations.md`.
+- **Verify the images a chart pins.** `chart package --verify-images
+  [--platforms linux/amd64,linux/arm64]` and `ocictl images verify --manifest
+  <file> [--platforms ...]` resolve every `images.*` entry in its registry and,
+  for each named platform, require an image index that lists it. Failures name
+  the image key and reference. Read access only; no platform is assumed.
 
 ## v0.11.0
 

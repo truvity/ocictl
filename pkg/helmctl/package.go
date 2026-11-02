@@ -15,6 +15,9 @@ import (
 	"path/filepath"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/truvity/ocictl/pkg/imagecheck"
+	"github.com/truvity/ocictl/pkg/ocipush"
 )
 
 type (
@@ -55,6 +58,15 @@ type (
 		// carry digests too, whether or not resolution ran. The helmctl CLI
 		// always sets this option.
 		VendorDependencies bool
+		// VerifyImages makes Package resolve every `images:` entry of the
+		// final values.yaml (registry/repository@digest) in its registry and,
+		// when VerifyPlatforms is set, require an index listing each platform.
+		// It needs registry read access only.
+		VerifyImages bool
+		// VerifyPlatforms are the platforms every verified image must offer.
+		VerifyPlatforms []imagecheck.Platform
+		// VerifyOptions tunes the registry connection of VerifyImages (tests).
+		VerifyOptions ocipush.Options
 		// OutputDir is where the .tgz is written.
 		OutputDir string
 	}
@@ -159,6 +171,12 @@ func Package(ctx context.Context, logger *slog.Logger, cfg PackageConfig) (*Pack
 			if err := requireDependencyImageDigests(chartTmp); err != nil {
 				return nil, err
 			}
+		}
+	}
+
+	if cfg.VerifyImages {
+		if err := verifyChartImages(ctx, logger, chartTmp, cfg); err != nil {
+			return nil, err
 		}
 	}
 
@@ -326,6 +344,32 @@ func copyFile(src, dst string) error {
 	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, in)
+
+	return err
+}
+
+// verifyChartImages checks the `images:` entries of the chart's values.yaml
+// against their registries (see imagecheck.Verify) and logs one line per image.
+func verifyChartImages(ctx context.Context, logger *slog.Logger, chartDir string, cfg PackageConfig) error {
+	data, err := os.ReadFile(filepath.Join(chartDir, "values.yaml")) //nolint:gosec // temp chart copy
+	if err != nil {
+		return fmt.Errorf("read values.yaml: %w", err)
+	}
+
+	var values map[string]any
+	if err := yaml.Unmarshal(data, &values); err != nil {
+		return fmt.Errorf("parse values.yaml: %w", err)
+	}
+
+	images, err := imagecheck.FromValues(values)
+	if err != nil {
+		return err
+	}
+
+	results, err := imagecheck.Verify(ctx, images, cfg.VerifyPlatforms, cfg.VerifyOptions)
+	for _, r := range results {
+		logger.InfoContext(ctx, r.String())
+	}
 
 	return err
 }
