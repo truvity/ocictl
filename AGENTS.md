@@ -49,6 +49,8 @@ ocictl images verify  --manifest <file> [--platforms linux/amd64,linux/arm64] [-
 ocictl attach         --subject <host/path>@<digest> --artifact-type <type> [--media-type <type>]
                       [--annotation k=v]... [--created <RFC3339>] [--profile <aws>] [--output text|json] <file>...
 ocictl referrers      <host/path>@<digest> [--artifact-type <type>] [--profile <aws>] [--output text|json]
+ocictl index create   --repository <host/path> --tag <tag> --manifest <host/path>@<digest>[:<os>/<arch>[/<variant>]]...
+                      [--annotation k=v]... [--created <RFC3339>] [--profile <aws>] [--output text|json]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
                       [--output text|json] [--digest-file <path>]
 
@@ -107,6 +109,9 @@ with no images. `chart package` reports on stderr: its stdout stays the path.
 registry with the OCI 1.1 referrers API and on one without (GHCR): the latter
 uses the `sha256-<digest>` tag schema, with a read-modify-write that is read
 back and retried.
+
+`index create` ([docs/index.md](docs/index.md)) merges single-platform images
+from separate jobs into one image index; it is idempotent like `static push`.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

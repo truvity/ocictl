@@ -27,6 +27,11 @@ Release notes for earlier versions are generated from commit history on the
   the `sha256-<digest>` tag schema, written with a read-modify-write that is read
   back and retried. `pkg/ocipush` gains `Artifact.Subject`, `Artifact.Blobs`,
   `Attach` and `Referrers`. See `docs/referrers.md`.
+- **`ocictl index create`.** Merges single-platform images, built in separate
+  jobs, into one OCI image index under a tag, with no Docker daemon: platforms
+  read from each image's config (or named), duplicates refused, the index sorted
+  by platform, inputs from other repositories copied by digest, and idempotent in
+  the manner of `static push`. See `docs/index.md`.
 
 ### Changed
 
