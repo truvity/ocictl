@@ -46,6 +46,11 @@ ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
 
+Every command above that pushes a manifest, and `digest`, also takes
+`[--annotation k=v]... [--source U] [--revision R] [--licenses L] [--url U]
+[--documentation U] [--vendor V] [--annotations-from-git]`
+([docs/annotations.md](docs/annotations.md)); nothing is defaulted.
+
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on
 missing required flags. `digest` is the one command with a positional argument

@@ -14,6 +14,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/annot"
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/ocipush"
 	"github.com/truvity/ocictl/pkg/smserver"
@@ -27,7 +28,7 @@ func Commands(version string) []*cli.Command {
 		{
 			Name:  "push",
 			Usage: "Pack the .map files of a build into a deterministic OCI artifact and push it under the release version",
-			Flags: []cli.Flag{
+			Flags: append([]cli.Flag{
 				&cli.StringFlag{Name: "maps", Usage: "Directory holding the .map files (searched recursively)", Required: true},
 				&cli.StringSliceFlag{
 					Name:  "include",
@@ -46,7 +47,7 @@ func Commands(version string) []*cli.Command {
 				&cli.StringFlag{Name: "profile", Usage: "AWS profile for ECR auth (optional)"},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
 				&cli.BoolFlag{Name: "dry-run", Usage: "Pack and print the manifest digest; push nothing"},
-			},
+			}, annot.Flags()...),
 			Action: runPush,
 		},
 		{
@@ -81,6 +82,13 @@ func runPush(ctx context.Context, cmd *cli.Command) error {
 	if artifact.Created, err = ocipush.ResolveCreated(cmd.String("created")); err != nil {
 		return err
 	}
+
+	extra, err := annot.Resolve(ctx, cmd)
+	if err != nil {
+		return err
+	}
+
+	artifact.Annotations = annot.Merge(artifact.Annotations, extra)
 
 	manifestDigest, err := sourcemaps.ManifestDigest(artifact)
 	if err != nil {

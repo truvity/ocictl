@@ -8,10 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/annot"
 	"github.com/truvity/ocictl/pkg/ocipush"
 	"github.com/truvity/ocictl/pkg/static"
 )
@@ -23,13 +23,12 @@ var RegistryOptions = func(profile string) ocipush.Options {
 }
 
 func shapeFlags() []cli.Flag {
-	return []cli.Flag{
+	return append([]cli.Flag{
 		&cli.StringFlag{Name: "shape", Usage: "Manifest shape: artifact (empty config, artifactType) or image (image config)", Value: string(static.ShapeArtifact)},
 		&cli.StringFlag{Name: "architecture", Usage: "Image config architecture (shape image)", Value: static.DefaultArchitecture},
 		&cli.StringFlag{Name: "os", Usage: "Image config os (shape image)", Value: static.DefaultOS},
-		&cli.StringSliceFlag{Name: "annotation", Usage: "Manifest annotation key=value (repeatable)"},
 		&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
-	}
+	}, annot.Flags()...)
 }
 
 // Command returns `static`, whose only subcommand is push.
@@ -61,12 +60,12 @@ func DigestCommand() *cli.Command {
 		Usage:     "Print the layer and manifest digests of a directory (what `static push --dry-run` prints); pushes nothing",
 		ArgsUsage: "<dir>",
 		Flags:     shapeFlags(),
-		Action: func(_ context.Context, cmd *cli.Command) error {
+		Action: func(ctx context.Context, cmd *cli.Command) error {
 			if cmd.NArg() != 1 {
 				return errors.New("digest takes exactly one argument: the directory")
 			}
 
-			art, _, err := build(cmd.Args().First(), "", cmd)
+			art, _, err := build(ctx, cmd.Args().First(), "", cmd)
 			if err != nil {
 				return err
 			}
@@ -76,32 +75,13 @@ func DigestCommand() *cli.Command {
 	}
 }
 
-func parseAnnotations(kvs []string) (map[string]string, error) {
-	if len(kvs) == 0 {
-		return nil, nil
-	}
-
-	out := make(map[string]string, len(kvs))
-
-	for _, kv := range kvs {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k == "" {
-			return nil, fmt.Errorf("--annotation %q: want key=value", kv)
-		}
-
-		out[k] = v
-	}
-
-	return out, nil
-}
-
-func build(dir, tag string, cmd *cli.Command) (ocipush.Artifact, int, error) {
+func build(ctx context.Context, dir, tag string, cmd *cli.Command) (ocipush.Artifact, int, error) {
 	shape, err := static.ParseShape(cmd.String("shape"))
 	if err != nil {
 		return ocipush.Artifact{}, 0, err
 	}
 
-	annotations, err := parseAnnotations(cmd.StringSlice("annotation"))
+	annotations, err := annot.Resolve(ctx, cmd)
 	if err != nil {
 		return ocipush.Artifact{}, 0, err
 	}
@@ -142,7 +122,7 @@ func printDigests(w io.Writer, art ocipush.Artifact) error {
 func runPush(ctx context.Context, cmd *cli.Command) error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	art, files, err := build(cmd.String("dir"), cmd.String("tag"), cmd)
+	art, files, err := build(ctx, cmd.String("dir"), cmd.String("tag"), cmd)
 	if err != nil {
 		return err
 	}

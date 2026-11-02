@@ -54,6 +54,8 @@ type (
 		// Created, when non-zero, becomes the chart manifest's
 		// org.opencontainers.image.created (see ocipush.ResolveCreated).
 		Created time.Time
+		// Annotations are extra manifest annotations of the chart.
+		Annotations map[string]string
 	}
 
 	// githubContentEntry represents a file entry from the GitHub Contents API.
@@ -181,11 +183,12 @@ func Publish(ctx context.Context, logger *slog.Logger, cfg PublishConfig) error 
 
 	// Push to registry.
 	pushResult, err := helmctl.Push(ctx, logger, helmctl.PushConfig{
-		TgzPath:    pkgResult.TgzPath,
-		Registry:   cfg.Registry,
-		Repository: cfg.Repository,
-		AWSProfile: cfg.AWSProfile,
-		Created:    cfg.Created,
+		TgzPath:     pkgResult.TgzPath,
+		Registry:    cfg.Registry,
+		Repository:  cfg.Repository,
+		AWSProfile:  cfg.AWSProfile,
+		Created:     cfg.Created,
+		Annotations: cfg.Annotations,
 		Meta: helmctl.ChartMeta{
 			Name:        buildResult.Name,
 			Version:     buildResult.Version,

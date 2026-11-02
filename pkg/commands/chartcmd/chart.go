@@ -11,6 +11,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/truvity/ocictl/pkg/commands/annot"
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/helmctl"
 	"github.com/truvity/ocictl/pkg/ocipush"
@@ -115,7 +116,7 @@ func Commands(logger *slog.Logger) []*cli.Command {
 		{
 			Name:  "push",
 			Usage: "Push a packaged chart .tgz to an OCI registry (deterministic, ORAS-based)",
-			Flags: []cli.Flag{
+			Flags: append([]cli.Flag{
 				&cli.StringFlag{Name: "tgz", Usage: "Path to .tgz file", Required: true},
 				&cli.StringFlag{Name: "registry", Usage: "OCI registry URL", Required: true},
 				&cli.StringFlag{Name: "repository", Usage: "Chart path in registry", Required: true},
@@ -123,9 +124,14 @@ func Commands(logger *slog.Logger) []*cli.Command {
 				&cli.StringFlag{Name: "name", Usage: "Chart name (for OCI config blob)", Required: true},
 				&cli.StringFlag{Name: "version", Usage: "Chart version (for OCI tag + config)", Required: true},
 				&cli.StringFlag{Name: "created", Usage: ocipush.CreatedFlagUsage},
-			},
+			}, annot.Flags()...),
 			Action: func(ctx context.Context, cmd *cli.Command) error {
 				created, err := ocipush.ResolveCreated(cmd.String("created"))
+				if err != nil {
+					return err
+				}
+
+				annotations, err := annot.Resolve(ctx, cmd)
 				if err != nil {
 					return err
 				}
@@ -136,6 +142,8 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					Repository: cmd.String("repository"),
 					AWSProfile: cmd.String("profile"),
 					Created:    created,
+
+					Annotations: annotations,
 					Meta: helmctl.ChartMeta{
 						Name:       cmd.String("name"),
 						Version:    cmd.String("version"),
