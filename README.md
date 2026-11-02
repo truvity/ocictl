@@ -177,6 +177,7 @@ Who uses ocictl, and through which surface:
 - [docs/static.md](docs/static.md) — static sites as OCI artifacts: shapes, idempotent push, digests
 - [docs/annotations.md](docs/annotations.md) — `--source`, `--revision`, `--annotation` and `--annotations-from-git` on every push
 - [docs/referrers.md](docs/referrers.md) — `attach` and `referrers`: OCI referrers with and without the referrers API (GHCR)
+- [docs/index.md](docs/index.md) — `index create`: merge per-architecture images into one index
 - [docs/sourcemaps.md](docs/sourcemaps.md) — source maps as OCI artifacts: publish, serve, security model
 - [docs/goreleaser.md](docs/goreleaser.md) — the helmctl + GoReleaser pipeline in full
 - [CHANGELOG.md](CHANGELOG.md) — release notes
