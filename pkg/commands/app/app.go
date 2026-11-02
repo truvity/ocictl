@@ -24,6 +24,7 @@ import (
 	"github.com/truvity/ocictl/pkg/commands/chartcmd"
 	"github.com/truvity/ocictl/pkg/commands/crdcmd"
 	"github.com/truvity/ocictl/pkg/commands/imagescmd"
+	"github.com/truvity/ocictl/pkg/commands/referrerscmd"
 	"github.com/truvity/ocictl/pkg/commands/smcmd"
 	"github.com/truvity/ocictl/pkg/commands/staticcmd"
 )
@@ -54,6 +55,8 @@ func New(version string) *cli.Command {
 			staticcmd.Command(),
 			staticcmd.DigestCommand(),
 			imagescmd.Command(),
+			referrerscmd.AttachCommand(),
+			referrerscmd.ReferrersCommand(),
 		},
 	}
 }

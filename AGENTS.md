@@ -46,6 +46,9 @@ ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
 ocictl images verify  --manifest <file> [--platforms linux/amd64,linux/arm64] [--profile <aws>]
+ocictl attach         --subject <host/path>@<digest> --artifact-type <type> [--media-type <type>]
+                      [--annotation k=v]... [--created <RFC3339>] [--profile <aws>] [--output text|json] <file>...
+ocictl referrers      <host/path>@<digest> [--artifact-type <type>] [--profile <aws>] [--output text|json]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
                       [--output text|json] [--digest-file <path>]
 
@@ -99,6 +102,11 @@ lists it and whose per-platform manifest resolves. One line per image; every
 failure names the image key and reference. Registry read access only (ghcr.io
 works anonymously without `GITHUB_TOKEN`). `images verify` fails on a manifest
 with no images. `chart package` reports on stderr: its stdout stays the path.
+
+`attach` and `referrers` ([docs/referrers.md](docs/referrers.md)) work on a
+registry with the OCI 1.1 referrers API and on one without (GHCR): the latter
+uses the `sha256-<digest>` tag schema, with a read-modify-write that is read
+back and retried.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on
