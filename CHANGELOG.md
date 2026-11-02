@@ -22,6 +22,20 @@ Release notes for earlier versions are generated from commit history on the
   for each named platform, require an image index that lists it. Failures name
   the image key and reference. Read access only; no platform is assumed.
 
+### Changed
+
+- **Breaking: layers are compressed with a pinned compressor, so digests change
+  once.** Every layer is compressed with `github.com/klauspost/compress/gzip` at
+  level 9, pinned in `go.mod`, instead of the standard library's `compress/gzip`,
+  so a Go toolchain bump can no longer change a layer or manifest digest. Chart
+  layers always get a new digest (they were compressed at the standard
+  library's default level); static and source-map layers are byte-identical to
+  before for the content tested but may differ for other content. Upgrade
+  rule: pushing the same content again to a tag published by an older ocictl is
+  refused as a "different manifest digest"; publish a new version, or check the
+  content and leave the tag. `just golden` (in CI) runs the golden digests under
+  two toolchains.
+
 ## v0.11.0
 
 ### Added

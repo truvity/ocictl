@@ -10,7 +10,6 @@ package layer
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -95,13 +94,8 @@ func Pack(dir string, accept Accept) (*Packed, error) {
 
 	var buf bytes.Buffer
 
-	// Fixed header: no name, no mtime, OS "unknown" (Go's default).
-	gz, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-	if err != nil {
-		return nil, err
-	}
-
-	gz.ModTime = time.Time{}
+	// Fixed header: no name, no mtime, one pinned compressor (see NewGzipWriter).
+	gz := NewGzipWriter(&buf)
 
 	sum := sha256.New()
 	tw := tar.NewWriter(io.MultiWriter(gz, sum))
