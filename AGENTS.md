@@ -43,8 +43,13 @@ ocictl sourcemaps serve --config <file>
 ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
+ocictl index create   --repository <host/path> --tag <tag> --manifest <host/path>@<digest>[:<os>/<arch>[/<variant>]]...
+                      [--annotation k=v]... [--created <RFC3339>] [--profile <aws>] [--output text|json]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
+
+`index create` ([docs/index.md](docs/index.md)) merges single-platform images
+from separate jobs into one image index; it is idempotent like `static push`.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

@@ -3,6 +3,16 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Added
+
+- **`ocictl index create`.** Merges single-platform images, built in separate
+  jobs, into one OCI image index under a tag, with no Docker daemon: platforms
+  read from each image's config (or named), duplicates refused, the index sorted
+  by platform, inputs from other repositories copied by digest, and idempotent in
+  the manner of `static push`. See `docs/index.md`.
+
 ## v0.10.3
 
 - Dependency updates.
