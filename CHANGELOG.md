@@ -3,7 +3,13 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
-## Unreleased
+## v0.12.0
+
+**Breaking change: layer digests change once.** Every layer is now compressed
+with a pinned compressor, so the digest of a chart you have already published
+changes, and pushing the same chart again to an existing tag is refused as a
+"different manifest digest". Publish such content under a new version. See
+"Changed" below.
 
 ### Added
 
