@@ -3,6 +3,16 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.11.0
+
+### Added
+
+- **Verify the images a chart pins.** `chart package --verify-images
+  [--platforms linux/amd64,linux/arm64]` and `ocictl images verify --manifest
+  <file> [--platforms ...]` resolve every `images.*` entry in its registry and,
+  for each named platform, require an image index that lists it. Failures name
+  the image key and reference. Read access only; no platform is assumed.
+
 ## v0.10.3
 
 - Dependency updates.

@@ -32,6 +32,7 @@ This is the whole of `ocictl`. There are no other subcommands (`release run` and
 ocictl chart goreleaser-manifest --goreleaser-dist <dir> [--images a,b] [-o <file>]
 ocictl chart package  --chart <dir> (--version <ver> | --manifest <file>)
                       [--app-version <ver>] [--require-image-digests] [--output <dir>]
+                      [--verify-images [--platforms linux/amd64,linux/arm64]]
 ocictl chart push     --tgz <file> --registry <url> --repository <path>
                       --name <name> --version <ver> [--profile <aws>]
 ocictl crd build      --config <crdctl.yaml>
@@ -43,8 +44,17 @@ ocictl sourcemaps serve --config <file>
 ocictl static push    --dir <dir> --repository <host/path> --tag <ver>
                       [--shape artifact|image] [--architecture <a>] [--os <os>]
                       [--annotation k=v]... [--profile <aws>] [--dry-run]
+ocictl images verify  --manifest <file> [--platforms linux/amd64,linux/arm64] [--profile <aws>]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
 ```
+
+`chart package --verify-images` and `ocictl images verify` resolve every
+`images.*` entry (`registry/repository@digest`) in its registry and, for each
+platform named in `--platforms` (default: none), require an image index that
+lists it and whose per-platform manifest resolves. One line per image; every
+failure names the image key and reference. Registry read access only (ghcr.io
+works anonymously without `GITHUB_TOKEN`). `images verify` fails on a manifest
+with no images. `chart package` reports on stderr: its stdout stays the path.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on

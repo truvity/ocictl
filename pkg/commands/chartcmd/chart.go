@@ -13,8 +13,16 @@ import (
 
 	"github.com/truvity/ocictl/pkg/goreleaserdist"
 	"github.com/truvity/ocictl/pkg/helmctl"
+	"github.com/truvity/ocictl/pkg/imagecheck"
 	"github.com/truvity/ocictl/pkg/ocipush"
 )
+
+// RegistryOptions maps --profile to the registry options of image
+// verification. Tests replace it to talk plain HTTP to a fake registry;
+// nothing else should.
+var RegistryOptions = func(profile string) ocipush.Options {
+	return ocipush.Options{AWSProfile: profile}
+}
 
 // Commands returns goreleaser-manifest, package and push.
 func Commands(logger *slog.Logger) []*cli.Command {
@@ -68,10 +76,30 @@ func Commands(logger *slog.Logger) []*cli.Command {
 					Usage: "Release manifest: version/appVersion + values to bake in (see `goreleaser-manifest`)",
 				},
 				&cli.BoolFlag{Name: "require-image-digests", Usage: "Fail unless every values.yaml images.* entry has a digest"},
+				&cli.BoolFlag{
+					Name:  "verify-images",
+					Usage: "Fail unless every values.yaml images.* entry resolves in its registry (registry read access only)",
+				},
+				&cli.StringSliceFlag{
+					Name:  "platforms",
+					Usage: "With --verify-images: os/arch[/variant] every image must offer in an index, e.g. linux/amd64,linux/arm64 (default: none)",
+				},
 				&cli.StringFlag{Name: "output", Usage: "Output directory for .tgz", Value: "."},
 			},
 			Action: func(ctx context.Context, cmd *cli.Command) error {
+				platforms, err := imagecheck.ParsePlatforms(cmd.StringSlice("platforms"))
+				if err != nil {
+					return err
+				}
+
+				if len(platforms) > 0 && !cmd.Bool("verify-images") {
+					return fmt.Errorf("--platforms needs --verify-images")
+				}
+
 				cfg := helmctl.PackageConfig{
+					VerifyImages:        cmd.Bool("verify-images"),
+					VerifyPlatforms:     platforms,
+					VerifyOptions:       RegistryOptions(""),
 					ChartDir:            cmd.String("chart"),
 					Version:             cmd.String("version"),
 					AppVersion:          cmd.String("app-version"),
