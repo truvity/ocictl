@@ -99,6 +99,27 @@ exited, `artifacts.json` and `metadata.json` are complete.
 > the images are pushed, and the ordering cannot be got wrong.
 > `--require-image-digests` is the belt to that braces.
 
+### Check that the pinned images exist and are multi-arch
+
+`--require-image-digests` checks that a digest is written down, not that it
+resolves. `--verify-images` does: every `images.*` entry of the final
+`values.yaml` is resolved as `registry/repository@digest`, and each platform you
+name in `--platforms` must be listed by an image index whose per-platform
+manifest also resolves. No platform is assumed; the caller names them.
+
+```bash
+helmctl package --chart charts/myproject --manifest dist/release.yaml \
+  --require-image-digests --verify-images --platforms linux/amd64,linux/arm64
+ocictl images verify --manifest dist/release.yaml --platforms linux/amd64,linux/arm64
+```
+
+The second form checks a release manifest without packaging anything. Both need
+registry read access only (`ghcr.io` works anonymously for public images); a
+failure names the image key and reference. GoReleaser's `artifacts.json` records
+what the build intended; this checks what the registry holds. The live-registry
+test (`TestVerifyLiveRegistry`) runs when `OCICTL_TEST_IMAGE` is set to a
+`registry/repository@digest` and is skipped otherwise.
+
 ## Source maps in the same job
 
 The same pattern carries a frontend's source maps (full guide:

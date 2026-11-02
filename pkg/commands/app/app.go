@@ -23,6 +23,7 @@ import (
 
 	"github.com/truvity/ocictl/pkg/commands/chartcmd"
 	"github.com/truvity/ocictl/pkg/commands/crdcmd"
+	"github.com/truvity/ocictl/pkg/commands/imagescmd"
 	"github.com/truvity/ocictl/pkg/commands/smcmd"
 	"github.com/truvity/ocictl/pkg/commands/staticcmd"
 )
@@ -52,6 +53,7 @@ func New(version string) *cli.Command {
 			{Name: "sourcemaps", Usage: "Source maps as OCI artifacts (was smctl)", Commands: smcmd.Commands(version)},
 			staticcmd.Command(),
 			staticcmd.DigestCommand(),
+			imagescmd.Command(),
 		},
 	}
 }
