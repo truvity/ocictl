@@ -11,6 +11,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/truvity/ocictl/pkg/commands/chartcmd"
 	"github.com/truvity/ocictl/pkg/commands/crdcmd"
+	"github.com/truvity/ocictl/pkg/commands/imagecmd"
 	"github.com/truvity/ocictl/pkg/commands/imagescmd"
 	"github.com/truvity/ocictl/pkg/commands/indexcmd"
 	"github.com/truvity/ocictl/pkg/commands/referrerscmd"
@@ -59,6 +61,7 @@ func New(version string) *cli.Command {
 			referrerscmd.AttachCommand(),
 			referrerscmd.ReferrersCommand(),
 			indexcmd.Command(),
+			imagecmd.Command(),
 		},
 	}
 }
@@ -123,6 +126,12 @@ func Run(args []string, version string) int {
 		_, _ = fmt.Fprintln(os.Stderr, "smctl:", err)
 	} else {
 		newLogger().ErrorContext(ctx, "command failed", slog.Any("error", err))
+	}
+
+	// A few errors carry their own exit status (a file that is not in an image: 2).
+	var coded interface{ ProcessExitCode() int }
+	if errors.As(err, &coded) {
+		return coded.ProcessExitCode()
 	}
 
 	return 1

@@ -51,6 +51,8 @@ ocictl attach         --subject <host/path>@<digest> --artifact-type <type> [--m
 ocictl referrers      <host/path>@<digest> [--artifact-type <type>] [--profile <aws>] [--output text|json]
 ocictl index create   --repository <host/path> --tag <tag> --manifest <host/path>@<digest>[:<os>/<arch>[/<variant>]]...
                       [--annotation k=v]... [--created <RFC3339>] [--profile <aws>] [--output text|json]
+ocictl image file-digest <host/path>@<digest> --path <abs path> [--platform <os/arch[/variant]>] [--expect sha256:...] [--profile <aws>]
+ocictl image extract  <host/path>@<digest> --path <abs path> -o <file|-> [--platform <os/arch[/variant]>] [--profile <aws>]
 ocictl digest <dir>   [--shape artifact|image] [--architecture <a>] [--os <os>] [--annotation k=v]...
                       [--output text|json] [--digest-file <path>]
 
@@ -112,6 +114,10 @@ back and retried.
 
 `index create` ([docs/index.md](docs/index.md)) merges single-platform images
 from separate jobs into one image index; it is idempotent like `static push`.
+
+`image file-digest` and `image extract` ([docs/image-files.md](docs/image-files.md))
+read one file of a remote image's flattened filesystem, honouring whiteouts;
+exit status 2 means the path is not there.
 
 Note `chart push` takes **no positional project argument**.
 `ocictl chart push myproject` is not a shorter form of anything; it fails on
