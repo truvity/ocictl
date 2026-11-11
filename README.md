@@ -158,16 +158,16 @@ crdctl publish --config charts/<name>/crdctl.yaml \
 
 ## Platform part and company part
 
-**Platform part.** None. ocictl is build-time tooling and a Go library, so
-nothing in this repository is applied to a cluster by a platform admin. The one
-runtime piece, the `smctl serve` image, is deployed through the
-[observability](https://github.com/truvity/observability) chart.
+**Platform part.** The `smctl serve` service, shipped here as the image
+`ghcr.io/truvity/ocictl/smctl`, runs in a cluster when the platform admin sets
+`sourcemaps.smctl.enabled` in the `observability-rum` chart of
+[observability](https://github.com/truvity/observability); it is off by default.
+Nothing else in this repository is applied to a cluster.
 
-**Company part.** A company's CI calls `ocictl chart push`, `ocictl crd publish`
-and the other push commands against registries the company owns. The company
-supplies `--registry`, `--repository` and `--profile` itself, because the binary
-carries no default for them. [docs/consuming.md](docs/consuming.md) shows how to
-pin and wire it.
+**Company part.** A company's CI runs `ocictl chart push` and `ocictl crd
+publish` against registries the company owns. It names the registry and the
+repository itself, because the binary carries no default for them.
+[docs/consuming.md](docs/consuming.md) shows how to pin and wire it.
 
 ## Consumers
 
