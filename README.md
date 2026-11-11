@@ -156,6 +156,19 @@ crdctl publish --config charts/<name>/crdctl.yaml \
   --registry ghcr.io --repository truvity/charts/my-crds
 ```
 
+## Platform part and company part
+
+**Platform part.** None. ocictl is build-time tooling and a Go library, so
+nothing in this repository is applied to a cluster by a platform admin. The one
+runtime piece, the `smctl serve` image, is deployed through the
+[observability](https://github.com/truvity/observability) chart.
+
+**Company part.** A company's CI calls `ocictl chart push`, `ocictl crd publish`
+and the other push commands against registries the company owns. The company
+supplies `--registry`, `--repository` and `--profile` itself, because the binary
+carries no default for them. [docs/consuming.md](docs/consuming.md) shows how to
+pin and wire it.
+
 ## Consumers
 
 Who uses ocictl, and through which surface:
@@ -163,6 +176,12 @@ Who uses ocictl, and through which surface:
 | Consumer                  | Surface                      |
 | -------------------------- | ------------------------------ |
 | truvity/gemaal            | `go tool helmctl`            |
+| truvity/cnpg              | `go run …/cmd/crdctl@vX`     |
+| truvity/k8s               | `go run …/cmd/crdctl@vX`     |
+| truvity/observability     | `crdctl`, in `hack/crds.sh`  |
+| truvity/ci-actions        | the `helmctl` release asset  |
+| truvity/policy            | Go module (`pkg/static`), `go tool helmctl` |
+| the maintainers' platform repository | Go module (`pkg/static`), indirect |
 | developer machines        | `go run …@vX` (this README)  |
 
 ## Neighbours
@@ -199,8 +218,8 @@ unpublished once a particular has landed in it.
 
 ## Status
 
-- Latest release: **v0.6.2** (2026-09-29) — see the
-  [releases page](https://github.com/truvity/ocictl/releases) for every tag.
+- Every release, with the latest one marked, is on the
+  [releases page](https://github.com/truvity/ocictl/releases).
 - The CRD charts (`barman-cloud-crds`, `volume-snapshot-crds`, `cilium-crds`)
   are no longer built here: they moved to the repositories that own what they
   extend ([truvity/cnpg](https://github.com/truvity/cnpg),
