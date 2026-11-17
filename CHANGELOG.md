@@ -3,6 +3,18 @@
 Release notes for earlier versions are generated from commit history on the
 [GitHub releases page](https://github.com/truvity/ocictl/releases).
 
+## v0.13.0
+
+### Added
+
+- **Each binary as a Nix flake release asset.** A release now also carries
+  `ocictl_<version>_nix-flake.tar.gz`, and the same for `helmctl`, `crdctl`
+  and `smctl`. Another repository's `devbox.json` installs one binary by the
+  asset's URL with `#<name>`, and `devbox.lock` pins its hash, so no script
+  has to download and verify the archive. The flake fetches this release's
+  own archives by sha256: nothing is rebuilt. The four are independent: a
+  consumer names only the one it uses. See "Install" in `README.md`.
+
 ## v0.12.0
 
 **Breaking change: layer digests change once.** Every layer is now compressed
