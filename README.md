@@ -89,6 +89,22 @@ go run github.com/truvity/ocictl/cmd/ocictl@<release> --help
 
 (`cmd/helmctl`, `cmd/crdctl` and `cmd/smctl` still build; they are deprecated.)
 
+With [devbox](https://www.jetify.com/devbox), from v0.13.0 on: every release
+carries each binary as a Nix flake, `<name>_<version>_nix-flake.tar.gz`. Name
+the asset's URL with `#<name>` as a package of `devbox.json`, and `devbox.lock`
+pins its hash:
+
+```json
+{
+  "packages": {
+    "https://github.com/truvity/ocictl/releases/download/v<version>/ocictl_<version>_nix-flake.tar.gz#ocictl": ""
+  }
+}
+```
+
+`helmctl`, `crdctl` and `smctl` have a flake each for as long as they are
+published; install only the one you call.
+
 Consuming this from another repository — pinning the version in `go.mod`,
 a `bin/helmctl` wrapper, and devbox PATH so employees and CI run the same
 binary — is **[docs/consuming.md](docs/consuming.md)**.

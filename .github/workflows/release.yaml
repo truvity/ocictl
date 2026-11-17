@@ -40,3 +40,8 @@ jobs:
       # The smctl service image is the only image this repository ships;
       # bare ko publishes to exactly this repository.
       ko-docker-repo: ghcr.io/truvity/ocictl/smctl
+      # Each binary also as a Nix flake (<name>_<version>_nix-flake.tar.gz),
+      # one release asset per binary, so that another repository's devbox
+      # installs just the one it uses, by URL, with its hash in devbox.lock.
+      # The names are the archive ids of .goreleaser.yaml.
+      nix-flakes: '["ocictl", "helmctl", "crdctl", "smctl"]'
